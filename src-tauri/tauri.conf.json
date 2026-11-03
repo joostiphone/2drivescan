@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "2DriveScan",
+  "mainBinaryName": "2drivescan",
+  "identifier": "app.twodrivescan",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "2DriveScan",
+        "width": 1320,
+        "height": 860,
+        "minWidth": 960,
+        "minHeight": 640,
+        "center": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 18, "y": 20 },
+        "backgroundColor": "#0a0c16"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+      "dangerousDisableAssetCspModification": ["style-src"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "2DriveScan",
+    "homepage": "https://2drivescan.app",
+    "copyright": "© 2026 2DriveScan contributors. MIT licensed.",
+    "category": "Utility",
+    "shortDescription": "See what is taking up your disk space",
+    "longDescription": "2DriveScan is a free, open source disk space analyzer. Scan any drive or folder and explore it as an interactive sunburst, find the biggest files and folders, and collect what you no longer need to move it to the trash.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "deb": {
+        "section": "utils"
+      },
+      "rpm": {
+        "release": "1"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": "-"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English", "Dutch"],
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

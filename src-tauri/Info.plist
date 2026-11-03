@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>2DriveScan measures how much space the files on your Desktop use.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>2DriveScan measures how much space the files in Documents use.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>2DriveScan measures how much space the files in Downloads use.</string>
+  <key>NSRemovableVolumesUsageDescription</key>
+  <string>2DriveScan measures how much space is used on removable drives.</string>
+  <key>NSNetworkVolumesUsageDescription</key>
+  <string>2DriveScan measures how much space is used on network drives.</string>
+</dict>
+</plist>

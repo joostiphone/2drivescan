@@ -1,0 +1,16 @@
+[package]
+name = "scan-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+license = "MIT"
+description = "Fast, parallel disk-usage scanner that powers 2DriveScan"
+repository = "https://github.com/joostiphone/2drivescan"
+publish = false
+
+[dependencies]
+rayon = "1.10"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
