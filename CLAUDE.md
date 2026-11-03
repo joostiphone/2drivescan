@@ -5,6 +5,9 @@ The owner communicates in Dutch; the app UI and repo docs are English (UI also h
 
 ## Layout
 - `crates/scan-core` – parallel scanner (rayon) + arena tree (`Tree`, stable `NodeId`s). Pure Rust, unit tests.
+  `listing.rs` reads folders (macOS: `getattrlistbulk`, cloud downloads disabled); `store.rs` saves/loads scans
+  (LZ4); a rescan reuses folders whose mtime did not change, and an interrupted scan is saved and continued.
+  macOS-only code is only tested on the macOS CI runner (`bulk_listing_matches_read_dir`).
 - `src-tauri/src/main.rs` – Tauri commands (scan, view, list, search, trash, reveal…); `volumes.rs` – drive list
   and per-OS scan rules (stay on one volume, macOS firmlinks, Linux pseudo filesystems).
 - `ui/js/main.js` – app controller; `sunburst.js` – canvas chart with camera-based zoom animation;

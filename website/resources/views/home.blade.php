@@ -3,7 +3,7 @@
 @php
     $featureIcons = [
         'sunburst' => 'pie', 'speed' => 'bolt', 'hidden' => 'eye', 'largest' => 'search',
-        'types' => 'layers', 'collector' => 'trash', 'native' => 'monitor', 'private' => 'shield',
+        'saved' => 'history', 'collector' => 'trash', 'native' => 'monitor', 'private' => 'shield',
     ];
     $demoSrc = asset('demo/index.html').'?demo=scan&path=%2F&label=Macintosh%20HD&theme=dark';
 @endphp

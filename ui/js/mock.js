@@ -272,6 +272,8 @@ export function createMock() {
       dirs: (dirs + 1) * 211,
       unreadable: rootPath === '/' ? 14 : 0,
       hidden: hiddenBytes,
+      complete: true,
+      scanned_at_ms: Date.now(),
     };
   };
   let hiddenBytes = 0;
@@ -302,6 +304,48 @@ export function createMock() {
     return n.size;
   };
 
+  // Builds the sample tree for a path (re-rooted on a sub folder when the
+  // path matches one) and returns the matching volume, if any.
+  const prepare = (path) => {
+    nodes = makeTree(7);
+    rootPath = path;
+    hiddenBytes = 0;
+    rootId = 0;
+    if (path !== '/') {
+      const parts = path.split('/').filter(Boolean);
+      let cur = 0;
+      for (const p of parts) {
+        const next = nodes[cur].children.find((c) => nodes[c].name === p);
+        if (next == null) {
+          cur = -1;
+          break;
+        }
+        cur = next;
+      }
+      if (cur > 0) rootId = cur;
+    }
+    const vol = VOLUMES.find((v) => v.mount_point === path);
+    if (vol && rootId === 0) {
+      const used = vol.total - vol.available;
+      hiddenBytes = Math.max(0, used - nodes[0].size);
+      if (hiddenBytes > 0) {
+        const h = { id: nodes.length, name: 'Hidden space', parent: 0, kind: 'hidden', size: hiddenBytes, items: 0, cat: 7, children: [], removed: false };
+        nodes.push(h);
+        nodes[0].children.push(h.id);
+        nodes[0].size += hiddenBytes;
+        nodes[0].children.sort((a, b) => nodes[b].size - nodes[a].size);
+      }
+    }
+    return vol;
+  };
+
+  let currentScan = null;
+  // Saved scans, as the real app keeps them between sessions.
+  const saved = new Map([
+    ['/', { root_path: '/', scanned_at_ms: Date.now() - 2 * 3600 * 1000, elapsed_ms: 48_000, complete: true, size: 520e9, files: 4_751_801, dirs: 512_000, unreadable: 14, nodes: 0 }],
+    ['/Volumes/Backup', { root_path: '/Volumes/Backup', scanned_at_ms: Date.now() - 26 * 3600 * 1000, elapsed_ms: 0, complete: false, size: 0, files: 0, dirs: 0, unreadable: 0, nodes: 0 }],
+  ]);
+
   const VOLUMES = [
     { name: 'Macintosh HD', mount_point: '/', total: 994.66 * GB, available: 431.2 * GB, file_system: 'apfs', removable: false, kind: 'ssd', is_root: true },
     { name: 'Backup', mount_point: '/Volumes/Backup', total: 2000.4 * GB, available: 1213.9 * GB, file_system: 'apfs', removable: true, kind: 'hdd', is_root: false },
@@ -309,47 +353,30 @@ export function createMock() {
   ];
 
   const handlers = {
-    app_info: () => ({ version: '0.1.1', os: 'macos', arch: 'aarch64', home: '/Users/joost', preview: true }),
+    app_info: () => ({ version: '0.2.0', os: 'macos', arch: 'aarch64', home: '/Users/joost', preview: true }),
     list_volumes: () => VOLUMES,
     pick_folder: () => '/Users/joost/Developer',
-    start_scan: ({ path }) => {
+    saved_scans: () =>
+      [...saved.values()].sort((a, b) => b.scanned_at_ms - a.scanned_at_ms),
+    open_saved: ({ path }) => {
+      const record = saved.get(path);
+      if (!record || !record.complete) throw new Error('no saved scan');
+      const vol = prepare(path);
+      return { scan_id: 0, stats: { ...stats(), scanned_at_ms: record.scanned_at_ms }, elapsed_ms: record.elapsed_ms, volume: vol || null, saved: true };
+    },
+    start_scan: ({ path, full }) => {
       clearInterval(timer);
       const id = ++scanId;
-      const full = makeTree(7);
-      nodes = full;
-      rootPath = path;
-      hiddenBytes = 0;
-      rootId = 0;
-      // Re-root on a sub folder when the path matches one.
-      if (path !== '/') {
-        const parts = path.split('/').filter(Boolean);
-        let cur = 0;
-        for (const p of parts) {
-          const next = nodes[cur].children.find((c) => nodes[c].name === p);
-          if (next == null) {
-            cur = -1;
-            break;
-          }
-          cur = next;
-        }
-        if (cur > 0) rootId = cur;
-      }
-      const vol = VOLUMES.find((v) => v.mount_point === path);
-      if (vol && rootId === 0) {
-        const used = vol.total - vol.available;
-        hiddenBytes = Math.max(0, used - nodes[0].size);
-        if (hiddenBytes > 0) {
-          const h = { id: nodes.length, name: 'Hidden space', parent: 0, kind: 'hidden', size: hiddenBytes, items: 0, cat: 7, children: [], removed: false };
-          nodes.push(h);
-          nodes[0].children.push(h.id);
-          nodes[0].size += hiddenBytes;
-          nodes[0].children.sort((a, b) => nodes[b].size - nodes[a].size);
-        }
-      }
+      const previous = saved.get(path);
+      const incremental = !!previous && !full;
+      const vol = prepare(path);
       const totalFiles = nodes[rootId].items;
       const totalBytes = nodes[rootId].size - hiddenBytes;
+      const totalDirs = stats().dirs;
       const started = performance.now();
-      const dur = 2600;
+      // A rescan only reads folders that changed, so it is much quicker.
+      const dur = incremental ? 1100 : 2600;
+      const scannedAt = Date.now();
       const sample = [];
       descendants(rootId, (n) => n.kind === 'dir' && sample.length < 400 && sample.push(n.id));
       timer = setInterval(() => {
@@ -359,22 +386,31 @@ export function createMock() {
         emit('scan-progress', {
           scan_id: id,
           files: Math.round(totalFiles * 1873 * e),
-          dirs: Math.round(totalFiles * 211 * e),
+          dirs: Math.round(totalDirs * e),
           bytes: Math.round(totalBytes * e),
           errors: Math.round(14 * e),
+          reused: incremental ? Math.round(totalDirs * 0.97 * e) : 0,
+          incremental,
           current: pathOf(sample[Math.floor(f * (sample.length - 1))] ?? rootId),
           elapsed_ms: el,
         });
         if (f >= 1) {
           clearInterval(timer);
-          const s = stats();
-          emit('scan-done', { scan_id: id, stats: s, elapsed_ms: el, volume: vol || null });
+          const s = { ...stats(), scanned_at_ms: scannedAt };
+          saved.set(path, { root_path: path, scanned_at_ms: scannedAt, elapsed_ms: el, complete: true, size: s.size - hiddenBytes, files: s.files, dirs: s.dirs, unreadable: s.unreadable, nodes: nodes.length });
+          emit('scan-done', { scan_id: id, stats: s, elapsed_ms: el, volume: vol || null, saved: false });
         }
       }, 70);
+      currentScan = { path, scannedAt };
       return id;
     },
     cancel_scan: () => {
       clearInterval(timer);
+      if (currentScan) {
+        // Like the real app: an interrupted scan is kept and continued later.
+        saved.set(currentScan.path, { root_path: currentScan.path, scanned_at_ms: currentScan.scannedAt, elapsed_ms: 0, complete: false, size: 0, files: 0, dirs: 0, unreadable: 0, nodes: 0 });
+        currentScan = null;
+      }
       emit('scan-failed', { scan_id: scanId, cancelled: true, message: 'scan cancelled' });
     },
     get_view: ({ id, depth }) => {

@@ -1,5 +1,5 @@
 import { api, listen, isPreview } from './api.js';
-import { t } from './i18n.js';
+import { t, lang } from './i18n.js';
 import { bytes, bytesParts, count, percent, duration, truncateMiddle, escapeHtml as esc, setBinaryUnits } from './format.js';
 import { icon } from './icons.js';
 import { Sunburst } from './sunburst.js';
@@ -27,6 +27,7 @@ const state = {
   query: '',
   collector: new Map(),
   rows: new Map(),
+  saved: new Map(),
   navToken: 0,
   panelToken: 0,
 };
@@ -179,68 +180,136 @@ function renderHome() {
   loadVolumes();
 }
 
-async function loadVolumes() {
-  try {
-    state.volumes = await api.listVolumes();
-  } catch {
-    state.volumes = [];
+function timeAgo(ms) {
+  const diff = (ms - Date.now()) / 1000;
+  const rtf = new Intl.RelativeTimeFormat(lang(), { numeric: 'auto' });
+  const steps = [
+    [60, 'second'],
+    [3600, 'minute', 60],
+    [86400, 'hour', 3600],
+    [604800, 'day', 86400],
+    [Infinity, 'week', 604800],
+  ];
+  const abs = Math.abs(diff);
+  if (abs < 45) return t('just_now');
+  for (const [limit, unit, div = 1] of steps) {
+    if (abs < limit) return rtf.format(Math.round(diff / div), unit);
   }
+  return new Date(ms).toLocaleDateString(lang());
+}
+
+/** Line and buttons for a saved scan of `path`, shown on its card. */
+function savedBlock(saved) {
+  if (!saved) return '';
+  if (saved.complete) {
+    return `
+      <div class="vol-saved">${icon('check')}<span>${esc(t('scanned_ago', { when: timeAgo(saved.scanned_at_ms) }))}</span></div>
+      <div class="vol-actions">
+        <button class="btn btn-sm primary" type="button" data-act="open">${esc(t('open_scan'))}</button>
+        <button class="btn btn-sm" type="button" data-act="rescan">${icon('refresh')}${esc(t('rescan'))}</button>
+      </div>`;
+  }
+  return `
+    <div class="vol-saved partial">${icon('refresh')}<span>${esc(t('unfinished_scan', { when: timeAgo(saved.scanned_at_ms) }))}</span></div>
+    <div class="vol-actions">
+      <button class="btn btn-sm primary" type="button" data-act="continue">${esc(t('continue_scan'))}</button>
+    </div>`;
+}
+
+async function loadVolumes() {
+  const [volumes, saved] = await Promise.all([
+    api.listVolumes().catch(() => []),
+    api.savedScans().catch(() => []),
+  ]);
+  state.volumes = volumes;
+  state.saved = new Map(saved.map((s) => [s.root_path, s]));
   const grid = $('#vol-grid');
   if (!grid) return;
+  const targets = [];
   const cards = state.volumes.map((v, i) => {
     const used = Math.max(0, v.total - v.available);
     const chips = [v.file_system && v.file_system.toUpperCase(), v.kind !== 'unknown' && v.kind.toUpperCase(), v.removable && t('removable')]
       .filter(Boolean)
       .map((c) => `<span class="chip">${esc(c)}</span>`)
       .join('');
+    targets.push({ path: v.mount_point, label: volumeLabel(v) });
     return `
-      <button class="vol-card glass" data-vol="${i}" type="button">
+      <div class="vol-card glass" data-target="${targets.length - 1}" role="button" tabindex="0">
         ${gauge(used, v.total, i)}
         <div class="vol-info">
           <div class="vol-name">${icon(v.removable ? 'usb' : 'drive')}<span>${esc(volumeLabel(v))}</span></div>
           <div class="vol-sub">${esc(v.mount_point)}</div>
           <div class="vol-free">${esc(t('free_of', { free: bytes(v.available), total: bytes(v.total) }))}</div>
-          <div class="chips">${chips}</div>
+          ${state.saved.has(v.mount_point) ? savedBlock(state.saved.get(v.mount_point)) : `<div class="chips">${chips}</div>`}
         </div>
-      </button>`;
+      </div>`;
   });
   if (state.info.home) {
+    targets.push({ path: state.info.home, label: t('home_folder') });
     cards.push(`
-      <button class="vol-card glass action" data-action="home" type="button">
+      <div class="vol-card glass action" data-target="${targets.length - 1}" role="button" tabindex="0">
         <div class="action-icon">${icon('user')}</div>
         <div class="vol-info">
           <div class="vol-name">${esc(t('home_folder'))}</div>
           <div class="vol-sub">${esc(state.info.home)}</div>
-          <div class="vol-free">${esc(t('home_folder_hint'))}</div>
+          ${state.saved.has(state.info.home) ? savedBlock(state.saved.get(state.info.home)) : `<div class="vol-free">${esc(t('home_folder_hint'))}</div>`}
         </div>
-      </button>`);
+      </div>`);
+  }
+  // Other folders scanned before.
+  const shown = new Set(targets.map((x) => x.path));
+  for (const s of state.saved.values()) {
+    if (shown.has(s.root_path)) continue;
+    const label = s.root_path.split(/[\\/]/).filter(Boolean).pop() || s.root_path;
+    targets.push({ path: s.root_path, label });
+    cards.push(`
+      <div class="vol-card glass action" data-target="${targets.length - 1}" role="button" tabindex="0">
+        <div class="action-icon">${icon('folder')}</div>
+        <div class="vol-info">
+          <div class="vol-name">${esc(label)}</div>
+          <div class="vol-sub">${esc(s.root_path)} · ${esc(bytes(s.size))}</div>
+          ${savedBlock(s)}
+        </div>
+      </div>`);
   }
   cards.push(`
-    <button class="vol-card glass action" data-action="pick" type="button">
+    <div class="vol-card glass action" data-action="pick" role="button" tabindex="0">
       <div class="action-icon grad">${icon('folderPlus')}</div>
       <div class="vol-info">
         <div class="vol-name">${esc(t('scan_folder'))}</div>
         <div class="vol-free">${esc(t('scan_folder_hint'))}</div>
       </div>
-    </button>`);
+    </div>`);
   grid.innerHTML = cards.join('');
   if (!state.volumes.length) grid.insertAdjacentHTML('afterbegin', `<div class="empty" style="grid-column:1/-1">${esc(t('no_volumes'))}</div>`);
 
+  const activate = async (card, act) => {
+    if (card.dataset.action === 'pick') {
+      const path = await api.pickFolder().catch(() => null);
+      if (path) startScan(path, path.split(/[\\/]/).filter(Boolean).pop() || path);
+      return;
+    }
+    const target = targets[+card.dataset.target];
+    const saved = state.saved.get(target.path);
+    // Default action: open a finished scan, continue an unfinished one, or scan.
+    const action = act || (saved ? (saved.complete ? 'open' : 'continue') : 'scan');
+    if (action === 'open') openSaved(target.path, target.label);
+    else startScan(target.path, target.label);
+  };
   grid.querySelectorAll('.vol-card').forEach((card) => {
     card.addEventListener('pointermove', (e) => {
       const r = card.getBoundingClientRect();
       card.style.setProperty('--mx', `${e.clientX - r.left}px`);
       card.style.setProperty('--my', `${e.clientY - r.top}px`);
     });
-    card.addEventListener('click', async () => {
-      if (card.dataset.vol != null) {
-        const v = state.volumes[+card.dataset.vol];
-        startScan(v.mount_point, volumeLabel(v));
-      } else if (card.dataset.action === 'home') {
-        startScan(state.info.home, t('home_folder'));
-      } else {
-        const path = await api.pickFolder().catch(() => null);
-        if (path) startScan(path, path.split(/[\\/]/).filter(Boolean).pop() || path);
+    card.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-act]');
+      activate(card, b ? b.dataset.act : null);
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.target === card && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        activate(card, null);
       }
     });
   });
@@ -249,6 +318,18 @@ async function loadVolumes() {
       grid.querySelectorAll('.gauge .value').forEach((c) => (c.style.strokeDashoffset = c.dataset.target));
     }),
   );
+}
+
+async function openSaved(path, label) {
+  state.scanPath = path;
+  state.scanLabel = label || path;
+  state.scanId = null;
+  try {
+    const d = await api.openSaved(path);
+    onDone(d, true);
+  } catch (e) {
+    toast(errText(e), 'err');
+  }
 }
 
 function showHome() {
@@ -275,13 +356,15 @@ function renderScan() {
         <div class="stat glass"><div class="stat-value" id="sc-dirs">0</div><div class="stat-label">${esc(t('folders'))}</div></div>
         <div class="stat glass"><div class="stat-value" id="sc-time">0 s</div><div class="stat-label">${esc(t('elapsed'))}</div></div>
       </div>
+      <div class="scan-reused" id="sc-reused" hidden>${icon('bolt')}<span class="reused-text"></span></div>
       <div class="scan-path" id="sc-path">${esc(t('preparing'))}</div>
       <button class="btn" id="sc-cancel" type="button">${icon('x')} ${esc(t('cancel'))}</button>
+      <p class="scan-hint">${esc(t('scan_resume_hint'))}</p>
     </div>`;
   $('#sc-cancel').addEventListener('click', () => api.cancelScan());
 }
 
-async function startScan(path, label) {
+async function startScan(path, label, { full = false } = {}) {
   if (!path) return;
   state.scanPath = path;
   state.scanLabel = label || path;
@@ -289,7 +372,7 @@ async function startScan(path, label) {
   renderScan();
   setScreen('scan');
   try {
-    state.scanId = await api.startScan(path);
+    state.scanId = await api.startScan(path, full);
   } catch (e) {
     toast(`${t('scan_failed')}: ${errText(e)}`, 'err');
     showHome();
@@ -304,10 +387,15 @@ function onProgress(p) {
   $('#sc-dirs').textContent = count(p.dirs);
   $('#sc-time').textContent = duration(p.elapsed_ms);
   if (p.current) $('#sc-path').textContent = truncateMiddle(p.current, 96);
+  const reused = $('#sc-reused');
+  if (reused && p.incremental) {
+    reused.hidden = false;
+    reused.querySelector('.reused-text').textContent = t('reused_folders', { n: count(p.reused || 0) });
+  }
 }
 
-function onDone(d) {
-  if (state.scanId != null && d.scan_id !== state.scanId) return;
+function onDone(d, opened = false) {
+  if (!opened && state.scanId != null && d.scan_id !== state.scanId) return;
   state.result = d;
   state.rootId = d.stats.root_id;
   state.collector.clear();
@@ -506,8 +594,10 @@ function renderUsage() {
 function renderStatus() {
   const el = $('#status');
   if (!el || !state.result) return;
-  const { stats, elapsed_ms } = state.result;
-  let html = `<span>${esc(t('scanned_summary', { files: count(stats.files), time: duration(elapsed_ms) }))}</span>`;
+  const { stats, elapsed_ms, saved } = state.result;
+  let html = saved
+    ? `<span>${esc(t('saved_summary', { files: count(stats.files), when: new Date(stats.scanned_at_ms).toLocaleString(lang(), { dateStyle: 'medium', timeStyle: 'short' }) }))}</span>`
+    : `<span>${esc(t('scanned_summary', { files: count(stats.files), time: duration(elapsed_ms) }))}</span>`;
   if (stats.unreadable > 0) {
     html += `<span class="status-warn">${icon('lock')}${esc(t('unreadable', { n: count(stats.unreadable) }))}</span>`;
     if (isMac()) html += `<button class="status-link" id="fda" type="button">${esc(t('grant_access'))}</button>`;
@@ -1001,15 +1091,16 @@ function setupTitlebar() {
   up.addEventListener('click', goUp);
   const rescan = $('#btn-rescan');
   rescan.innerHTML = icon('refresh');
-  rescan.title = t('rescan');
+  rescan.title = t('rescan_tip');
   rescan.addEventListener('click', rescanCurrent);
   const theme = $('#btn-theme');
   theme.title = t('toggle_theme');
   theme.addEventListener('click', toggleTheme);
 }
 
-function rescanCurrent() {
-  if (state.result) startScan(state.result.stats.root_path, state.scanLabel);
+/** Rescan reuses unchanged folders; hold Alt/Option for a full rescan. */
+function rescanCurrent(e) {
+  if (state.result) startScan(state.result.stats.root_path, state.scanLabel, { full: !!(e && e.altKey) });
 }
 
 function setupKeyboard() {

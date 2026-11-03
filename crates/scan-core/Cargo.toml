@@ -1,6 +1,6 @@
 [package]
 name = "scan-core"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.87"
 license = "MIT"
@@ -9,6 +9,7 @@ repository = "https://github.com/joostiphone/2drivescan"
 publish = false
 
 [dependencies]
+lz4_flex = "0.14"
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
 

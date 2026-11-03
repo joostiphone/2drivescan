@@ -20,8 +20,11 @@
 
 - **Interactive sunburst.** Every ring is a folder level. Hover to inspect, click to zoom in, click the
   center to go back. Transitions are animated so you never lose your place.
-- **Fast.** A parallel scanner written in Rust reads hundreds of thousands of files per second. It counts the
-  space files actually take on disk (sparse files and hard links are handled correctly) and stays on one volume.
+- **Fast.** A parallel scanner written in Rust reads hundreds of thousands of files per second (on macOS with
+  `getattrlistbulk`). It counts the space files actually take on disk (sparse files and hard links are handled
+  correctly), stays on one volume and never downloads files that only live in iCloud or other cloud folders.
+- **Scans are saved.** Reopen the last scan of a drive instantly. A rescan only reads folders that changed,
+  usually in seconds, and an interrupted scan continues where it stopped.
 - **Hidden space.** When you scan a whole drive, used space that no file accounts for (snapshots, swap, system
   files, folders you cannot read) is shown as its own segment, so the numbers add up.
 - **Find the big stuff.** The side panel has a sorted folder list, the largest files anywhere below the
@@ -57,7 +60,8 @@ Get the latest installers from the [Releases page](https://github.com/joostiphon
 | --- | --- |
 | Go up one level | `Esc`, `Backspace` or `Alt + ↑` |
 | Search in the current folder | `/` or `Ctrl/⌘ + F` |
-| Rescan | `Ctrl/⌘ + R` |
+| Rescan (only changed folders) | `Ctrl/⌘ + R` |
+| Full rescan | Alt/Option-click the rescan button |
 
 ## Development
 
@@ -65,7 +69,7 @@ Get the latest installers from the [Releases page](https://github.com/joostiphon
 and the interface is plain HTML, CSS and JavaScript (no bundler) rendered on a canvas.
 
 ```
-crates/scan-core   Parallel scanner and tree model (pure Rust, unit tested)
+crates/scan-core   Parallel scanner, tree model and saved scans (pure Rust, unit tested)
 src-tauri          Desktop app: commands, volumes, trash, packaging config
 ui                 Interface (index.html, css/, js/). js/mock.js is a demo backend
 scripts            Preview server and version bump helper

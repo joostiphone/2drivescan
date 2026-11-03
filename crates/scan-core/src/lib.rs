@@ -2,11 +2,15 @@
 //! the UI navigates.
 
 pub mod category;
+mod listing;
 pub mod scanner;
+pub mod store;
 pub mod tree;
 
 pub use category::{categorize, Category, CATEGORY_COUNT};
+pub use listing::disable_cloud_downloads;
 pub use scanner::{scan, Progress, ProgressSnapshot, ScanError, ScanOptions};
+pub use store::SavedScan;
 pub use tree::{kind_str, Crumb, ItemHit, Kind, Node, NodeId, Tree, TreeStats, ViewNode};
 
 #[cfg(test)]
@@ -14,6 +18,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::io::Write;
+    use std::sync::Arc;
 
     fn write_file(path: &std::path::Path, bytes: usize) {
         let mut f = fs::File::create(path).unwrap();
@@ -141,13 +146,110 @@ mod tests {
     }
 
     #[test]
-    fn cancel_stops_scan() {
+    fn cancelled_scan_returns_an_incomplete_tree() {
         let dir = sample();
         let progress = Progress::new();
         progress.cancel();
-        assert!(matches!(
-            scan(dir.path(), &ScanOptions::default(), &progress),
-            Err(ScanError::Cancelled)
-        ));
+        let tree = scan(dir.path(), &ScanOptions::default(), &progress).unwrap();
+        assert!(!tree.is_complete());
+        assert!(scan_sample(&dir).is_complete());
+    }
+
+    /// Compares two trees by path, size and kind.
+    fn flat(tree: &Tree) -> Vec<(String, u64, Kind)> {
+        let mut out = Vec::new();
+        let mut stack = vec![tree.root()];
+        while let Some(id) = stack.pop() {
+            let n = tree.get(id).unwrap();
+            out.push((tree.path_of(id).display().to_string(), n.size, n.kind));
+            stack.extend(n.children.iter().copied());
+        }
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn saved_scans_load_back_identically() {
+        let dir = sample();
+        let tree = scan_sample(&dir);
+        let elsewhere = tempfile::tempdir().unwrap();
+        let file = elsewhere.path().join("scan.2ds");
+        let summary = store::save(&tree, &file, 1234).unwrap();
+        assert!(summary.complete);
+        assert_eq!(summary.files, tree.stats().files);
+        assert_eq!(store::read_summary(&file).unwrap().elapsed_ms, 1234);
+
+        let loaded = store::load(&file).unwrap();
+        assert_eq!(flat(&loaded), flat(&tree));
+        assert_eq!(loaded.stats().files, tree.stats().files);
+        assert_eq!(loaded.stats().size, tree.stats().size);
+        assert_eq!(loaded.category_totals(0), tree.category_totals(0));
+        assert_eq!(loaded.scanned_at(), tree.scanned_at());
+        assert!(loaded.is_complete());
+        assert_eq!(loaded.largest_files(0, 1)[0].name, "a.jpg");
+    }
+
+    #[test]
+    fn rescans_with_a_previous_tree_match_a_fresh_scan() {
+        let dir = sample();
+        let previous = Arc::new(scan_sample(&dir));
+
+        // Change things: a new file, a removed file, a grown big file.
+        write_file(&dir.path().join("photos/2024/c.jpg"), 70_000);
+        fs::remove_file(dir.path().join("music/song.mp3")).unwrap();
+        write_file(&dir.path().join("photos/cover.png"), 20 * 1024 * 1024);
+
+        let progress = Progress::new();
+        let opts = ScanOptions {
+            previous: Some(previous),
+            ..Default::default()
+        };
+        let incremental = scan(dir.path(), &opts, &progress).unwrap();
+        assert_eq!(flat(&incremental), flat(&scan_sample(&dir)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unchanged_folders_are_reused_and_interrupted_scans_continue() {
+        use std::time::{Duration, SystemTime};
+        let dir = sample();
+        // Make every folder look older than the scan, as on a real disk.
+        let old = SystemTime::now() - Duration::from_secs(3600);
+        for d in ["", "photos", "photos/2024", "music", "empty"] {
+            fs::File::open(dir.path().join(d))
+                .unwrap()
+                .set_modified(old)
+                .unwrap();
+        }
+        let first = Arc::new(scan_sample(&dir));
+
+        let progress = Progress::new();
+        let opts = ScanOptions {
+            previous: Some(first.clone()),
+            ..Default::default()
+        };
+        let second = scan(dir.path(), &opts, &progress).unwrap();
+        assert_eq!(
+            progress.reused.load(std::sync::atomic::Ordering::Relaxed),
+            5
+        );
+        assert_eq!(flat(&second), flat(&first));
+
+        // An interrupted scan, saved and loaded, is continued by the next one.
+        let cancelled = Progress::new();
+        cancelled.cancel();
+        let partial = scan(dir.path(), &ScanOptions::default(), &cancelled).unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let file = elsewhere.path().join("partial.2ds");
+        store::save(&partial, &file, 0).unwrap();
+        let partial = Arc::new(store::load(&file).unwrap());
+        assert!(!partial.is_complete());
+        let opts = ScanOptions {
+            previous: Some(partial),
+            ..Default::default()
+        };
+        let resumed = scan(dir.path(), &opts, &Progress::new()).unwrap();
+        assert!(resumed.is_complete());
+        assert_eq!(flat(&resumed), flat(&first));
     }
 }

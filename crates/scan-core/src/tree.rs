@@ -15,7 +15,7 @@ use crate::category::{Category, CATEGORY_COUNT};
 pub type NodeId = u32;
 pub const NO_PARENT: NodeId = u32::MAX;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     Dir,
@@ -41,6 +41,14 @@ pub struct Node {
     /// The directory (or part of it) could not be read.
     pub unreadable: bool,
     pub removed: bool,
+    /// Directories: every entry below was read (false for unreadable or
+    /// cloud-only folders and for folders an interrupted scan did not finish).
+    /// Only complete folders are reused by a later scan.
+    pub complete: bool,
+    /// Directories: modification time in nanoseconds since the Unix epoch, as
+    /// seen during the scan. It changes whenever an entry is added, removed or
+    /// renamed, which is what lets a rescan skip unchanged folders.
+    pub mtime: i64,
     /// Children sorted by size, largest first.
     pub children: Vec<NodeId>,
     /// Per-category byte totals for directories.
@@ -63,6 +71,10 @@ pub struct TreeStats {
     pub dirs: u64,
     pub unreadable: u64,
     pub hidden: u64,
+    /// False when the scan was interrupted before it finished.
+    pub complete: bool,
+    /// When the scan started, in milliseconds since the Unix epoch.
+    pub scanned_at_ms: i64,
 }
 
 /// A node as sent to the UI, optionally with (pruned) children.
@@ -118,16 +130,40 @@ pub struct Tree {
     pub(crate) nodes: Vec<Node>,
     pub(crate) unreadable_dirs: u64,
     hidden: u64,
+    /// When the scan started, in nanoseconds since the Unix epoch.
+    pub(crate) scanned_at: i64,
 }
 
 impl Tree {
-    pub(crate) fn from_nodes(root_path: PathBuf, nodes: Vec<Node>, unreadable_dirs: u64) -> Self {
+    pub(crate) fn from_nodes(
+        root_path: PathBuf,
+        nodes: Vec<Node>,
+        unreadable_dirs: u64,
+        scanned_at: i64,
+    ) -> Self {
         Tree {
             root_path,
             nodes,
             unreadable_dirs,
             hidden: 0,
+            scanned_at,
         }
+    }
+
+    /// False when the scan was interrupted; the tree then holds what was read
+    /// so far and can be used to continue later.
+    pub fn is_complete(&self) -> bool {
+        self.nodes.first().map(|n| n.complete).unwrap_or(false)
+    }
+
+    /// When the scan started, in nanoseconds since the Unix epoch.
+    pub fn scanned_at(&self) -> i64 {
+        self.scanned_at
+    }
+
+    /// Node by id, including removed ones (for crate-internal walks).
+    pub(crate) fn raw(&self, id: NodeId) -> &Node {
+        &self.nodes[id as usize]
     }
 
     pub fn root(&self) -> NodeId {
@@ -166,6 +202,8 @@ impl Tree {
             dirs,
             unreadable: self.unreadable_dirs,
             hidden: self.hidden,
+            complete: self.is_complete(),
+            scanned_at_ms: self.scanned_at / 1_000_000,
         }
     }
 
@@ -185,6 +223,8 @@ impl Tree {
             category: Category::Other,
             unreadable: false,
             removed: false,
+            complete: true,
+            mtime: 0,
             children: Vec::new(),
             cats: None,
         });

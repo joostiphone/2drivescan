@@ -3,6 +3,19 @@
 All notable changes to 2DriveScan. The website shows this file on its changelog page;
 the Dutch version lives in `CHANGELOG.nl.md`.
 
+## 0.2.0 – 2026-11-03
+
+Much faster scans, and you no longer have to start from zero.
+
+- **Cloud files are no longer downloaded.** On macOS, scanning iCloud Drive and other cloud folders made the
+  system download everything that was only in the cloud, which could make a scan take half an hour. Those
+  folders are now skipped; files that are not downloaded take no disk space anyway.
+- **Faster macOS scanner** that reads names, sizes and dates of many files per system call (`getattrlistbulk`).
+- **Scans are saved.** The start screen shows when each drive was last scanned; open the result instantly.
+- **Quick rescans.** A rescan only reads the folders that changed since the last scan and takes over the rest,
+  usually seconds instead of minutes. Hold Alt/Option while clicking Rescan for a full scan.
+- **Interrupted scans continue.** Cancel a scan or quit the app, and the next scan picks up where it stopped.
+
 ## 0.1.1 – 2026-11-03
 
 - The macOS app is now signed with a Developer ID certificate and notarized by Apple, so it opens

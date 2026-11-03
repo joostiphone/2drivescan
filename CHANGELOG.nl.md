@@ -2,6 +2,23 @@
 
 Alle belangrijke wijzigingen in 2DriveScan. De Engelse versie staat in `CHANGELOG.md`.
 
+## 0.2.0 – 2026-11-03
+
+Veel snellere scans, en je hoeft niet meer bij nul te beginnen.
+
+- **Cloudbestanden worden niet meer gedownload.** Op macOS liet het scannen van iCloud Drive en andere
+  cloudmappen het systeem alles downloaden wat alleen in de cloud stond. Daardoor kon een scan een half uur
+  duren. Die mappen worden nu overgeslagen; bestanden die niet gedownload zijn, nemen toch geen schijfruimte in.
+- **Snellere macOS-scanner** die namen, groottes en datums van veel bestanden per systeemaanroep leest
+  (`getattrlistbulk`).
+- **Scans worden bewaard.** Het startscherm laat zien wanneer elke schijf het laatst gescand is; open het
+  resultaat meteen.
+- **Snel opnieuw scannen.** Een nieuwe scan leest alleen de mappen die sinds de vorige scan veranderd zijn en
+  neemt de rest over: meestal seconden in plaats van minuten. Houd Alt/Option ingedrukt bij Opnieuw scannen
+  voor een volledige scan.
+- **Onderbroken scans gaan verder.** Stop een scan of sluit de app, en de volgende scan gaat verder waar hij
+  gebleven was.
+
 ## 0.1.1 – 2026-11-03
 
 - De macOS-app is nu ondertekend met een Developer ID-certificaat en genotariseerd door Apple. Hij opent
