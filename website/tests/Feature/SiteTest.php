@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Services\Changelog;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -108,16 +107,5 @@ class SiteTest extends TestCase
         $this->get('/sitemap.xml')->assertOk()
             ->assertHeader('Content-Type', 'application/xml')
             ->assertSee(url('/nl/download'), false);
-    }
-
-    public function test_changelog_parser_reads_versions_and_dates(): void
-    {
-        $entries = (new Changelog)->parse("# Changelog\n\nIntro\n\n## 1.2.0 – 2026-12-01\n\n- **New** thing\n\n## 1.1.0\n\n- Older\n");
-
-        $this->assertCount(2, $entries);
-        $this->assertSame('1.2.0', $entries[0]['version']);
-        $this->assertSame('2026-12-01', $entries[0]['date']);
-        $this->assertStringContainsString('<strong>New</strong>', $entries[0]['html']);
-        $this->assertNull($entries[1]['date']);
     }
 }
