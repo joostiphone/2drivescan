@@ -48,8 +48,8 @@ Get the latest installers from the [Releases page](https://github.com/joostiphon
 | Fedora, openSUSE, RHEL | `.rpm` (x86_64, aarch64) |
 | Any other distribution | `.AppImage` (amd64, aarch64) |
 
-> **macOS:** builds are not notarized yet. If macOS refuses to open the app, go to *System Settings → Privacy &
-> Security* and click **Open Anyway**. Grant **Full Disk Access** there too for a complete scan.
+> **macOS:** grant 2DriveScan **Full Disk Access** in *System Settings → Privacy & Security* for a complete scan.
+> If macOS refuses to open an unsigned build, click **Open Anyway** in the same settings pane.
 
 ## Keyboard shortcuts
 
@@ -96,8 +96,7 @@ cargo run --release -p scan-core --example bench -- ~/Downloads
 3. The [Release workflow](.github/workflows/release.yml) builds all installers on GitHub Actions, attaches them
    to a new GitHub release and publishes it when every platform succeeds.
 
-Code signing is optional. To sign and notarize macOS builds, add the `APPLE_*` repository secrets listed in
-the workflow.
+Code signing is optional. To sign and notarize the macOS app, follow [docs/macos-signing.md](docs/macos-signing.md).
 
 ## License
 

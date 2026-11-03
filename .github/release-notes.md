@@ -11,8 +11,8 @@
 
 ### First launch
 
-- **macOS:** the app is not notarized by Apple yet. If macOS says it cannot verify the developer, open
-  *System Settings → Privacy & Security* and click **Open Anyway**. For a complete picture of your disk, grant
-  2DriveScan **Full Disk Access** in the same settings pane.
+- **macOS:** for a complete picture of your disk, grant 2DriveScan **Full Disk Access** in
+  *System Settings → Privacy & Security*. If macOS says it cannot verify the developer (unsigned builds), click
+  **Open Anyway** in the same settings pane.
 - **Windows:** SmartScreen may warn about an unknown publisher. Click **More info → Run anyway**.
 - **Linux AppImage:** make the file executable (`chmod +x 2DriveScan_*.AppImage`) and run it.

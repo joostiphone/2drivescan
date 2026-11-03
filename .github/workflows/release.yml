@@ -116,18 +116,45 @@ jobs:
 
       - run: npm ci
 
-      - uses: tauri-apps/tauri-action@v0
+      # Optional macOS signing + notarization. Enabled only when the repository
+      # secrets exist (see docs/macos-signing.md); otherwise the app is ad-hoc
+      # signed. Empty variables must not reach Tauri, so they are exported
+      # conditionally instead of being set on the build step.
+      - name: Configure macOS signing
+        if: startsWith(matrix.platform, 'macos')
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional code signing. Add these repository secrets to enable it:
-          # APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
-          # APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          export_var() {
+            local delim="EOF_$(openssl rand -hex 8)"
+            { echo "$1<<$delim"; printf '%s\n' "${!1}"; echo "$delim"; } >> "$GITHUB_ENV"
+          }
+          if [[ -n "$APPLE_CERTIFICATE" && -n "$APPLE_SIGNING_IDENTITY" ]]; then
+            export_var APPLE_CERTIFICATE
+            export_var APPLE_CERTIFICATE_PASSWORD
+            export_var APPLE_SIGNING_IDENTITY
+            echo "Signing with a Developer ID certificate."
+            if [[ -n "$APPLE_ID" && -n "$APPLE_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
+              export_var APPLE_ID
+              export_var APPLE_PASSWORD
+              export_var APPLE_TEAM_ID
+              echo "Notarization enabled."
+            else
+              echo "::warning::APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID missing: the app is signed but not notarized."
+            fi
+          else
+            echo "No signing secrets configured: building an ad-hoc signed app."
+          fi
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
