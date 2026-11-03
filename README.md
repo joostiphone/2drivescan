@@ -69,6 +69,7 @@ crates/scan-core   Parallel scanner and tree model (pure Rust, unit tested)
 src-tauri          Desktop app: commands, volumes, trash, packaging config
 ui                 Interface (index.html, css/, js/). js/mock.js is a demo backend
 scripts            Preview server and version bump helper
+website            Laravel site for 2drivescan.app (see website/README.md)
 assets             Icon source (make_icon.py renders icon.svg)
 ```
 

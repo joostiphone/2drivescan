@@ -1079,7 +1079,9 @@ async function init() {
   } catch (e) {
     reportError(errText(e));
   }
-  document.body.classList.add(`platform-${state.info.os}`);
+  // The platform class reserves room for native window controls, which the
+  // browser preview (website demo) does not have.
+  if (!isPreview) document.body.classList.add(`platform-${state.info.os}`);
   setBinaryUnits(isWindows());
   setupTitlebar();
   setupKeyboard();
