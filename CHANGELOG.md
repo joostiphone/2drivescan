@@ -3,6 +3,12 @@
 All notable changes to 2DriveScan. The website shows this file on its changelog page;
 the Dutch version lives in `CHANGELOG.nl.md`.
 
+## 0.2.1 – 2026-11-03
+
+- Fixed: a finished scan was saved as "unfinished" when some folders could not be read (normal on macOS
+  without Full Disk Access), so the app returned to the start screen instead of showing the result. Use
+  **Continue scan** once to finish it; the progress you already have is kept.
+
 ## 0.2.0 – 2026-11-03
 
 Much faster scans, and you no longer have to start from zero.

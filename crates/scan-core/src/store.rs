@@ -359,6 +359,7 @@ pub fn load(path: &Path) -> io::Result<Tree> {
         nodes,
         unreadable,
         scanned_at,
+        summary.complete,
     ))
 }
 

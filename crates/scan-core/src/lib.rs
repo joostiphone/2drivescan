@@ -145,6 +145,29 @@ mod tests {
         assert_eq!(tree.stats().files, 2);
     }
 
+    /// Regression: unreadable folders (normal on macOS without Full Disk
+    /// Access) must not make a finished scan look unfinished.
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_folders_do_not_mark_the_scan_unfinished() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = sample();
+        let locked = dir.path().join("locked");
+        fs::create_dir(&locked).unwrap();
+        write_file(&locked.join("secret.bin"), 1000);
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let readable = fs::read_dir(&locked).is_ok(); // true when running as root
+        let tree = scan_sample(&dir);
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(tree.is_complete());
+        if !readable {
+            assert_eq!(tree.stats().unreadable, 1);
+            let file = tempfile::tempdir().unwrap().path().join("s.2ds");
+            assert!(store::save(&tree, &file, 0).unwrap().complete);
+            assert!(store::load(&file).unwrap().is_complete());
+        }
+    }
+
     #[test]
     fn cancelled_scan_returns_an_incomplete_tree() {
         let dir = sample();

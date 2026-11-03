@@ -132,6 +132,10 @@ pub struct Tree {
     hidden: u64,
     /// When the scan started, in nanoseconds since the Unix epoch.
     pub(crate) scanned_at: i64,
+    /// The scan ran to the end (it was not cancelled). Unreadable or
+    /// cloud-only folders do not make a finished scan unfinished; they only
+    /// keep their own folders from being reused (see [`Node::complete`]).
+    pub(crate) finished: bool,
 }
 
 impl Tree {
@@ -140,6 +144,7 @@ impl Tree {
         nodes: Vec<Node>,
         unreadable_dirs: u64,
         scanned_at: i64,
+        finished: bool,
     ) -> Self {
         Tree {
             root_path,
@@ -147,13 +152,14 @@ impl Tree {
             unreadable_dirs,
             hidden: 0,
             scanned_at,
+            finished,
         }
     }
 
     /// False when the scan was interrupted; the tree then holds what was read
     /// so far and can be used to continue later.
     pub fn is_complete(&self) -> bool {
-        self.nodes.first().map(|n| n.complete).unwrap_or(false)
+        self.finished && !self.nodes.is_empty()
     }
 
     /// When the scan started, in nanoseconds since the Unix epoch.

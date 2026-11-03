@@ -427,7 +427,13 @@ fn dir_node(d: &DirTmp, parent: NodeId) -> Node {
     }
 }
 
-fn flatten(root_path: PathBuf, root: DirTmp, unreadable: u64, scanned_at: i64) -> Tree {
+fn flatten(
+    root_path: PathBuf,
+    root: DirTmp,
+    unreadable: u64,
+    scanned_at: i64,
+    finished: bool,
+) -> Tree {
     let mut nodes: Vec<Node> = Vec::with_capacity((root.items as usize).saturating_add(1024));
     nodes.push(dir_node(&root, NO_PARENT));
     let mut stack: Vec<(DirTmp, NodeId)> = vec![(root, 0)];
@@ -460,7 +466,7 @@ fn flatten(root_path: PathBuf, root: DirTmp, unreadable: u64, scanned_at: i64) -
         children.sort_by(|&a, &b| nodes[b as usize].size.cmp(&nodes[a as usize].size));
         nodes[id as usize].children = children;
     }
-    Tree::from_nodes(root_path, nodes, unreadable, scanned_at)
+    Tree::from_nodes(root_path, nodes, unreadable, scanned_at, finished)
 }
 
 fn default_threads() -> usize {
@@ -523,6 +529,7 @@ pub fn scan(root: &Path, opts: &ScanOptions, progress: &Progress) -> Result<Tree
         previous: previous.map(|_| 0),
     };
     let tmp = pool.install(|| scan_dir(job, &ctx));
+    let finished = !progress.is_cancelled();
     let unreadable = ctx.unreadable.load(Ordering::Relaxed);
-    Ok(pool.install(|| flatten(root.to_path_buf(), tmp, unreadable, scanned_at)))
+    Ok(pool.install(|| flatten(root.to_path_buf(), tmp, unreadable, scanned_at, finished)))
 }

@@ -2,6 +2,13 @@
 
 Alle belangrijke wijzigingen in 2DriveScan. De Engelse versie staat in `CHANGELOG.md`.
 
+## 0.2.1 – 2026-11-03
+
+- Opgelost: een afgemaakte scan werd als "onafgemaakt" bewaard als sommige mappen niet gelezen konden worden
+  (normaal op macOS zonder volledige schijftoegang). De app ging dan terug naar het startscherm in plaats van
+  het resultaat te tonen. Gebruik één keer **Scan voortzetten** om hem af te maken; de voortgang die je al
+  hebt, blijft bewaard.
+
 ## 0.2.0 – 2026-11-03
 
 Veel snellere scans, en je hoeft niet meer bij nul te beginnen.
