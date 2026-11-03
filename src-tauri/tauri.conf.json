@@ -19,13 +19,18 @@
         "center": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 18, "y": 20 },
+        "trafficLightPosition": {
+          "x": 18,
+          "y": 20
+        },
         "backgroundColor": "#0a0c16"
       }
     ],
     "security": {
       "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'",
-      "dangerousDisableAssetCspModification": ["style-src"]
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ]
     }
   },
   "bundle": {
@@ -59,8 +64,23 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["English", "Dutch"],
+        "languages": [
+          "English",
+          "Dutch"
+        ],
         "displayLanguageSelector": false
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "PUBKEY_PLACEHOLDER",
+      "endpoints": [
+        "https://github.com/joostiphone/2drivescan/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

@@ -1740,6 +1740,87 @@ body:not([data-screen='result']) .crumbs {
   gap: 10px;
 }
 
+.update-banner {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 85;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 14px;
+  background: var(--panel-solid);
+  border: 1px solid rgba(124, 92, 255, 0.45);
+  box-shadow: var(--shadow);
+  max-width: calc(100vw - 260px);
+  animation: toast-in 0.35s cubic-bezier(0.2, 1.2, 0.4, 1);
+}
+
+body[data-screen='scan'] .update-banner {
+  display: none;
+}
+
+.ub-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-grad);
+  color: #fff;
+  flex: none;
+}
+
+.ub-icon.warn {
+  background: var(--danger-grad);
+}
+
+.ub-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.ub-text {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 520px;
+}
+
+.ub-link {
+  border: 0;
+  background: none;
+  color: var(--accent-2);
+  font: inherit;
+  font-size: 12.5px;
+  margin-left: 8px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ub-link:hover {
+  text-decoration: underline;
+}
+
+.ub-bar {
+  width: 260px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--panel-strong);
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.ub-bar > div {
+  height: 100%;
+  background: var(--accent-grad);
+  transition: width 0.2s;
+}
+
 .toast-root {
   position: fixed;
   left: 50%;

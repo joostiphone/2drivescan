@@ -13,6 +13,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::volumes::Volume;
 
@@ -31,6 +32,20 @@ struct AppState {
     elapsed_ms: AtomicU64,
     /// The app is closing and waits for a running scan to save its progress.
     quitting: AtomicBool,
+    /// Update found by `check_update`, installed by `install_update`.
+    pending_update: Mutex<Option<Update>>,
+}
+
+#[derive(Serialize)]
+struct UpdateInfo {
+    version: String,
+    current_version: String,
+}
+
+#[derive(Serialize, Clone)]
+struct UpdateProgress {
+    downloaded: u64,
+    total: Option<u64>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -229,6 +244,55 @@ fn defer_quit_for_scan(app: &AppHandle) -> bool {
         app.exit(0);
     });
     true
+}
+
+/// Asks GitHub whether a newer version exists. The endpoint and the public key
+/// that update packages must be signed with are in tauri.conf.json.
+#[tauri::command]
+async fn check_update(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Option<UpdateInfo>> {
+    let mut builder = app.updater_builder();
+    // For testing an update locally against a hand-made manifest.
+    if let Ok(url) = std::env::var("TWODRIVESCAN_UPDATE_URL") {
+        let url = url.parse().map_err(|e| format!("bad update URL: {e}"))?;
+        builder = builder.endpoints(vec![url]).map_err(|e| e.to_string())?;
+    }
+    let updater = builder.build().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?;
+    let info = update.as_ref().map(|u| UpdateInfo {
+        version: u.version.clone(),
+        current_version: u.current_version.clone(),
+    });
+    *state.pending_update.lock().map_err(|_| "state poisoned")? = update;
+    Ok(info)
+}
+
+/// Downloads the update found by `check_update`, verifies its signature,
+/// installs it and restarts the app.
+#[tauri::command]
+async fn install_update(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    if state.active.lock().map(|a| a.is_some()).unwrap_or(false) {
+        return Err("A scan is running; update after it finishes.".into());
+    }
+    // Cloned, not taken: after a failed attempt the user can try again.
+    let update = state
+        .pending_update
+        .lock()
+        .map_err(|_| "state poisoned")?
+        .clone()
+        .ok_or("no update to install")?;
+    let progress_app = app.clone();
+    let mut downloaded = 0u64;
+    update
+        .download_and_install(
+            move |chunk, total| {
+                downloaded += chunk as u64;
+                let _ = progress_app.emit("update-progress", UpdateProgress { downloaded, total });
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    app.restart()
 }
 
 #[tauri::command]
@@ -653,6 +717,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             app_info,
@@ -673,6 +738,8 @@ fn main() {
             open_node,
             open_external,
             trash_nodes,
+            check_update,
+            install_update,
         ])
         .on_window_event(|window, event| {
             // Closing the window during a scan: save its progress first.

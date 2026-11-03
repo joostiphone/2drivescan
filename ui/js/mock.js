@@ -459,6 +459,9 @@ export function createMock() {
         return { id, name: n.name, size: n.size, kind: n.kind, cat: n.cat, path: pathOf(id), covered };
       });
     },
+    // The browser demo never offers updates.
+    check_update: () => null,
+    install_update: () => null,
     reveal_node: () => null,
     open_node: () => null,
     open_external: ({ url }) => {

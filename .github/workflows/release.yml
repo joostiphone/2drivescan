@@ -152,12 +152,36 @@ jobs:
             echo "No signing secrets configured: building an ad-hoc signed app."
           fi
 
+      # Update packages are signed with the updater key (minisign). The app
+      # only installs updates signed with it; the public half is in
+      # tauri.conf.json (plugins.updater.pubkey). Without the secret the
+      # release is built without update packages.
+      - name: Configure update signing
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            for v in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+              delim="EOF_$(openssl rand -hex 8)"
+              { echo "$v<<$delim"; printf '%s\n' "${!v}"; echo "$delim"; } >> "$GITHUB_ENV"
+            done
+            echo "UPDATER_ARGS=" >> "$GITHUB_ENV"
+            echo "Update packages will be signed."
+          else
+            echo "UPDATER_ARGS=--config src-tauri/tauri.no-updater.conf.json" >> "$GITHUB_ENV"
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set: building without update packages."
+          fi
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} ${{ env.UPDATER_ARGS }}
+          # Windows users install the setup.exe; update them with the same installer.
+          updaterJsonPreferNsis: true
 
   publish-release:
     name: Publish release

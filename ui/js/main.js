@@ -174,9 +174,12 @@ function renderHome() {
         <span>${esc(t('version', { v: state.info.version }))}</span>
         <button class="link-btn" data-url="${REPO_URL}">${icon('github')} GitHub</button>
         <span>${esc(t('free_open_source'))}</span>
+        ${isPreview ? '' : `<button class="link-btn" id="upd-check" type="button">${icon('refresh')} ${esc(t('update_check'))}</button>
+        <button class="link-btn" id="upd-auto" type="button"></button>`}
       </div>
     </div>`;
   el.querySelector('[data-url]').addEventListener('click', (e) => api.openExternal(e.currentTarget.dataset.url).catch(() => {}));
+  setupUpdateControls();
   loadVolumes();
 }
 
@@ -1078,6 +1081,119 @@ function confirmTrash() {
   $('#m-ok').focus();
 }
 
+// ------------------------------------------------------------------ updates
+
+const CHANGELOG_URL = 'https://2drivescan.app/changelog';
+const DOWNLOAD_URL = 'https://2drivescan.app/download';
+const update = { info: null, checked: false, installing: false, error: null };
+
+function autoUpdatesEnabled() {
+  try {
+    return localStorage.getItem('2ds-auto-update') !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function setupUpdateControls() {
+  const auto = $('#upd-auto');
+  const check = $('#upd-check');
+  if (!auto || !check) return;
+  const label = () => (auto.innerHTML = `${icon(autoUpdatesEnabled() ? 'check' : 'x')} ${esc(t(autoUpdatesEnabled() ? 'update_auto_on' : 'update_auto_off'))}`);
+  label();
+  auto.addEventListener('click', () => {
+    try {
+      localStorage.setItem('2ds-auto-update', autoUpdatesEnabled() ? 'off' : 'on');
+    } catch {
+      /* ignore */
+    }
+    label();
+  });
+  check.addEventListener('click', async () => {
+    check.disabled = true;
+    check.innerHTML = `${icon('refresh')} ${esc(t('update_checking'))}`;
+    const found = await checkForUpdate(true);
+    check.disabled = false;
+    check.innerHTML = `${icon('refresh')} ${esc(t('update_check'))}`;
+    if (!found && found !== undefined) toast(t('update_none', { version: state.info.version }));
+  });
+}
+
+/** Returns true when an update was found, false when none, undefined on error. */
+async function checkForUpdate(manual = false) {
+  if (isPreview || update.installing) return false;
+  try {
+    update.info = await api.checkUpdate();
+  } catch (e) {
+    if (manual) toast(`${t('update_check')}: ${errText(e)}`, 'err');
+    return undefined;
+  }
+  update.checked = true;
+  renderUpdateBanner();
+  return !!update.info;
+}
+
+function renderUpdateBanner(progress = null) {
+  const el = $('#update-banner');
+  if (!el) return;
+  if (!update.info) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  if (update.error) {
+    el.innerHTML = `
+      <div class="ub-icon warn">${icon('warn')}</div>
+      <div class="ub-text" title="${esc(update.error)}">${esc(t('update_failed', { error: update.error }))}</div>
+      <button class="btn btn-sm" type="button" data-act="retry">${esc(t('update_install'))}</button>
+      <button class="btn btn-sm primary" type="button" data-act="download">${esc(t('update_download_manually'))}</button>
+      <button class="icon-btn" type="button" data-act="later" title="${esc(t('update_later'))}">${icon('x')}</button>`;
+    el.onclick = (e) => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'download') api.openExternal(DOWNLOAD_URL).catch(() => {});
+      if (act === 'retry') installUpdate();
+      if (act === 'later') el.hidden = true;
+    };
+    return;
+  }
+  if (update.installing) {
+    const pct = progress && progress.total ? Math.round((progress.downloaded / progress.total) * 100) : null;
+    const done = pct === 100;
+    el.innerHTML = `
+      <div class="ub-icon">${icon('refresh')}</div>
+      <div class="ub-text">${esc(done ? t('update_installing') : t('update_downloading', { pct: pct == null ? '' : `${pct}%` }))}
+        <div class="ub-bar"><div style="width:${pct ?? 8}%"></div></div>
+      </div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="ub-icon">${icon('sparkle')}</div>
+    <div class="ub-text"><b>${esc(t('update_available', { version: update.info.version }))}</b>
+      <button class="ub-link" type="button" data-act="notes">${esc(t('update_whats_new'))}</button></div>
+    <button class="btn btn-sm primary" type="button" data-act="install">${esc(t('update_install'))}</button>
+    <button class="icon-btn" type="button" data-act="later" title="${esc(t('update_later'))}">${icon('x')}</button>`;
+  el.onclick = async (e) => {
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'notes') api.openExternal(`${CHANGELOG_URL}#v${update.info.version}`).catch(() => {});
+    if (act === 'later') el.hidden = true;
+    if (act === 'install') installUpdate();
+  };
+}
+
+async function installUpdate() {
+  if (document.body.dataset.screen === 'scan') return;
+  update.installing = true;
+  update.error = null;
+  renderUpdateBanner();
+  try {
+    await api.installUpdate(); // Restarts the app when it succeeds.
+  } catch (e) {
+    update.installing = false;
+    update.error = errText(e);
+    renderUpdateBanner();
+  }
+}
+
 // ------------------------------------------------------------------ setup
 
 function setupTitlebar() {
@@ -1180,6 +1296,7 @@ async function init() {
   await listen('scan-progress', onProgress);
   await listen('scan-done', onDone);
   await listen('scan-failed', onFailed);
+  await listen('update-progress', (p) => renderUpdateBanner(p));
   matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', (ev) => {
     let saved = null;
     try {
@@ -1196,6 +1313,9 @@ async function init() {
     b.textContent = t('preview_mode');
     document.body.appendChild(b);
   }
+
+  // Look for a new version a few seconds after start (can be switched off).
+  if (!isPreview && autoUpdatesEnabled()) setTimeout(() => checkForUpdate(false), 4000);
 
   const params = new URLSearchParams(location.search);
   if (params.get('demo') === 'scan') {

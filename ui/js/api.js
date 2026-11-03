@@ -39,4 +39,6 @@ export const api = {
   openNode: (id) => invoke('open_node', { id }),
   openExternal: (url) => invoke('open_external', { url }),
   trashNodes: (ids) => invoke('trash_nodes', { ids }),
+  checkUpdate: () => invoke('check_update'),
+  installUpdate: () => invoke('install_update'),
 };
