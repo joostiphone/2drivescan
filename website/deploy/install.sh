@@ -1,61 +1,73 @@
 #!/usr/bin/env bash
-# One-time setup of 2drivescan.app on a Debian/Ubuntu server. Run as root:
+# One-time setup of 2drivescan.app on a Debian/Ubuntu server with nginx,
+# PHP-FPM (8.3+), Composer and git. Run as root:
 #
 #   bash install.sh
 #
-# It clones the repository, configures Laravel, deploys once and installs a
-# systemd timer that keeps the site up to date. It does not change your web
-# server configuration; see deploy/nginx.conf for an example.
+# Creates the release layout used by 2drivescan-deploy, installs the deploy
+# script and a systemd timer that deploys new commits on main every 5
+# minutes, and runs the first deploy. The nginx site (deploy/nginx.conf) and
+# HTTPS (Cloudflare Tunnel) are set up separately; see website/README.md.
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/joostiphone/2drivescan.git}"
-REPO_DIR="${REPO_DIR:-/var/www/2drivescan}"
-WEB_USER="${WEB_USER:-www-data}"
-SITE_URL="${SITE_URL:-https://2drivescan.app}"
+APP_DIR="${APP_DIR:-/var/www/2drivescan}"
+APP_USER="${APP_USER:-deploy}"
+RAW="${RAW:-https://raw.githubusercontent.com/joostiphone/2drivescan/main/website}"
+PHP_VERSION="${PHP_VERSION:-$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || true)}"
 
 [[ $EUID -eq 0 ]] || { echo "Run as root."; exit 1; }
-
-php_ok="$(php -r 'echo version_compare(PHP_VERSION, "8.3.0", ">=") ? "yes" : "no";' 2>/dev/null || echo no)"
-if [[ "$php_ok" != "yes" ]]; then
-  echo "PHP 8.3 or newer is required (found: $(php -r 'echo PHP_VERSION;' 2>/dev/null || echo none))."
-  exit 1
-fi
-for bin in git composer; do
-  command -v "$bin" >/dev/null || { echo "$bin is not installed."; exit 1; }
+php -r 'exit(version_compare(PHP_VERSION, "8.3.0", ">=") ? 0 : 1);' 2>/dev/null \
+    || { echo "PHP 8.3 or newer is required."; exit 1; }
+for bin in git composer curl nginx; do
+    command -v "$bin" >/dev/null || { echo "$bin is not installed."; exit 1; }
 done
-for ext in mbstring xml curl tokenizer ctype fileinfo; do
-  php -m | grep -qi "^$ext\$" || echo "Warning: PHP extension '$ext' seems to be missing."
+systemctl list-unit-files "php${PHP_VERSION}-fpm.service" >/dev/null \
+    || { echo "php${PHP_VERSION}-fpm is not installed."; exit 1; }
+
+id "${APP_USER}" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "${APP_USER}"
+usermod -aG www-data "${APP_USER}"
+
+mkdir -p "${APP_DIR}/releases" "${APP_DIR}/shared"
+for d in app/public framework/cache/data framework/sessions framework/views logs; do
+    mkdir -p "${APP_DIR}/shared/storage/${d}"
 done
 
-if [[ ! -d "$REPO_DIR/.git" ]]; then
-  git clone --quiet "$REPO_URL" "$REPO_DIR"
+if [[ ! -f "${APP_DIR}/shared/.env" ]]; then
+    curl -fsSL "${RAW}/.env.example" -o "${APP_DIR}/shared/.env"
+    key="base64:$(php -r 'echo base64_encode(random_bytes(32));')"
+    sed -i "s#^APP_KEY=.*#APP_KEY=${key}#" "${APP_DIR}/shared/.env"
+fi
+chown "${APP_USER}:www-data" "${APP_DIR}/shared/.env"
+chmod 0640 "${APP_DIR}/shared/.env"
+chown -R "${APP_USER}:www-data" "${APP_DIR}"
+
+curl -fsSL "${RAW}/deploy/2drivescan-deploy" -o /usr/local/bin/2drivescan-deploy
+chmod 0755 /usr/local/bin/2drivescan-deploy
+
+if [[ ! -f /etc/default/2drivescan-deploy ]]; then
+    cat > /etc/default/2drivescan-deploy <<CONF
+APP_DIR=${APP_DIR}
+APP_USER=${APP_USER}
+REPO_URL=https://github.com/joostiphone/2drivescan.git
+BRANCH=main
+DOMAIN=2drivescan.app
+KEEP_RELEASES=5
+PHP_VERSION=${PHP_VERSION}
+CONF
 fi
 
-cd "$REPO_DIR/website"
-if [[ ! -f .env ]]; then
-  cp .env.example .env
-  sed -i "s#^APP_URL=.*#APP_URL=${SITE_URL}#" .env
-  COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --quiet
-  php artisan key:generate --force --quiet
-fi
-
-chmod +x deploy/update.sh
-REPO_DIR="$REPO_DIR" WEB_USER="$WEB_USER" deploy/update.sh --force
-
-cat > /etc/systemd/system/2drivescan-update.service <<UNIT
+cat > /etc/systemd/system/2drivescan-update.service <<'UNIT'
 [Unit]
-Description=Update 2drivescan.app from GitHub
+Description=Deploy 2drivescan.app when main changes on GitHub
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=oneshot
-Environment=REPO_DIR=${REPO_DIR}
-Environment=WEB_USER=${WEB_USER}
-ExecStart=${REPO_DIR}/website/deploy/update.sh
+ExecStart=/usr/local/bin/2drivescan-deploy --if-changed
 UNIT
 
-cat > /etc/systemd/system/2drivescan-update.timer <<UNIT
+cat > /etc/systemd/system/2drivescan-update.timer <<'UNIT'
 [Unit]
 Description=Check GitHub for 2drivescan.app updates every 5 minutes
 
@@ -69,9 +81,9 @@ WantedBy=timers.target
 UNIT
 
 systemctl daemon-reload
+/usr/local/bin/2drivescan-deploy || echo "First deploy failed; check the output above (is the nginx site enabled?)."
 systemctl enable --now 2drivescan-update.timer
 
 echo
-echo "Done. Point your web server at ${REPO_DIR}/website/public (example: deploy/nginx.conf)"
-echo "and publish it over HTTPS with Cloudflare Tunnel (see website/README.md)."
-echo "Logs of automatic updates: journalctl -u 2drivescan-update"
+echo "Done. Enable the nginx site (example: deploy/nginx.conf, root ${APP_DIR}/current/website/public)"
+echo "and publish it over HTTPS with Cloudflare Tunnel. Deploy log: journalctl -u 2drivescan-update"

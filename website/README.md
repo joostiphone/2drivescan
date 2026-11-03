@@ -11,7 +11,9 @@ templates are Blade, styles and scripts are plain files in `public/assets/`.
 - **The live demo** on the home page is the real app UI from `../ui`, running with its mock backend.
   `php artisan site:sync` copies it (plus screenshots from `../docs/screenshots` and the icons) into `public/`.
 - **The changelog page** renders `../CHANGELOG.md` and `../CHANGELOG.nl.md`.
-- **The server deploys itself:** `deploy/update.sh` runs every 5 minutes from a systemd timer, pulls `main`
+- **The server deploys itself:** a systemd timer runs `2drivescan-deploy --if-changed` every 5 minutes. When
+  `main` moved it builds a fresh release next to the running one, health-checks it and switches over, or
+  rolls back. Pushing to `main` is all it takes.
   from GitHub and rebuilds when something changed. Pushing to `main` is all it takes.
 
 ## Pages
@@ -37,34 +39,44 @@ php artisan test
 
 ## Server setup
 
-On a Debian/Ubuntu server with PHP 8.3+, Composer and git:
+Production runs on a Debian 13 container (CT 142) with nginx and PHP 8.4:
+
+```
+/var/www/2drivescan/
+  releases/<timestamp>/   full clone of the repository (main), web root: website/public
+  current -> releases/…   the live release
+  shared/.env             production settings (APP_KEY, APP_URL, TRUSTED_PROXIES, GITHUB_TOKEN)
+  shared/storage/         logs and cache, linked into every release
+/usr/local/bin/2drivescan-deploy      deploy script (source: deploy/2drivescan-deploy)
+/etc/default/2drivescan-deploy        its settings
+2drivescan-update.timer               runs `2drivescan-deploy --if-changed` every 5 minutes
+```
+
+To set up a new server: enable an nginx site like `deploy/nginx.conf`, then run as root
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/joostiphone/2drivescan/main/website/deploy/install.sh | bash
 ```
 
-Then point the web server at `/var/www/2drivescan/website/public` (example: `deploy/nginx.conf`, listening on
-port 80 locally).
+After changing `deploy/2drivescan-deploy` in the repo, copy it to `/usr/local/bin/` on the server; the
+script does not update itself.
 
 ### HTTPS with Cloudflare Tunnel
 
-`.app` domains only work over HTTPS. The domain is managed in Cloudflare, so the server publishes the site
-through a Cloudflare Tunnel: `cloudflared` on the server opens an outbound connection to Cloudflare, no ports
-have to be opened on the router, and Cloudflare handles the certificate.
+`.app` domains only work over HTTPS. The domain is managed in Cloudflare and published through a
+Cloudflare Tunnel: `cloudflared` opens an outbound connection to Cloudflare, so no router ports are open,
+and Cloudflare handles the certificate. In production the connector runs on another container in the same
+network (CT 101) and forwards `2drivescan.app` and `www.2drivescan.app` to port 80 of CT 142.
 
-1. Cloudflare dashboard → *Zero Trust → Networks → Tunnels → Create a tunnel* → type **Cloudflared**, name
-   `2drivescan`.
-2. Choose Debian/Ubuntu and run the install command it shows on the server (it contains the tunnel token).
-3. Add two public hostnames, both with service **HTTP** → `localhost:80`:
-   `2drivescan.app` and `www.2drivescan.app`. Cloudflare creates the DNS records itself.
-
-Laravel trusts `X-Forwarded-*` headers from `127.0.0.1` (where cloudflared connects from), forces `https://`
-links in production, and redirects `www.` to the bare domain.
+Laravel trusts `X-Forwarded-*` headers only from `TRUSTED_PROXIES` (default `127.0.0.1,::1`; production adds
+the connector's address), forces `https://` links in production, redirects `www.` to the bare domain, and
+sets no cookies.
 
 ### Useful commands
 
 ```bash
-journalctl -u 2drivescan-update             # deploy log
-/var/www/2drivescan/website/deploy/update.sh --force
-php /var/www/2drivescan/website/artisan releases:refresh
+journalctl -u 2drivescan-update -n 50     # automatic deploys
+2drivescan-deploy                         # deploy main now
+cat /var/www/2drivescan/current/.release  # live release and commit
+php /var/www/2drivescan/current/website/artisan releases:refresh
 ```

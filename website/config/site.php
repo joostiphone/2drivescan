@@ -16,6 +16,10 @@ return [
         'nl' => 'Nederlands',
     ],
 
+    // Proxies whose X-Forwarded-* headers are trusted: the machine running
+    // cloudflared (Cloudflare Tunnel). Comma separated.
+    'trusted_proxies' => array_values(array_filter(array_map('trim', explode(',', (string) env('TRUSTED_PROXIES', '127.0.0.1,::1'))))),
+
     // Path to the repository checkout that contains CHANGELOG.md, ui/ and docs/.
     'repo_path' => env('SITE_REPO_PATH', dirname(base_path())),
 ];

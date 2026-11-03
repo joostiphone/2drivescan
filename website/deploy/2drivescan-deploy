@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+#
+# 2drivescan.app: atomic deploy with automatic rollback.
+#
+#   releases/<timestamp>  a fresh clone of the whole 2drivescan repository (main)
+#   shared/               .env and storage/, linked into <release>/website
+#   current -> releases/<timestamp>     (web root: current/website/public)
+#
+# Steps: clone, composer --no-dev, site:sync (app UI, screenshots, icons),
+# optimize, releases:refresh, switch the symlink, reload PHP-FPM, health check.
+# If the health check fails, the previous release is restored.
+#
+# Run as root:
+#   2drivescan-deploy               deploy main now
+#   2drivescan-deploy --if-changed  deploy only when main on GitHub moved
+#                                   (used by 2drivescan-update.timer every 5 minutes)
+#
+# Settings live in /etc/default/2drivescan-deploy. Installed to
+# /usr/local/bin/2drivescan-deploy by website/deploy/install.sh.
+#
+set -euo pipefail
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+umask 002
+
+[[ -f /etc/default/2drivescan-deploy ]] && source /etc/default/2drivescan-deploy
+APP_DIR="${APP_DIR:-/var/www/2drivescan}"
+APP_USER="${APP_USER:-deploy}"
+REPO_URL="${REPO_URL:-https://github.com/joostiphone/2drivescan.git}"
+BRANCH="${BRANCH:-main}"
+DOMAIN="${DOMAIN:-2drivescan.app}"
+KEEP_RELEASES="${KEEP_RELEASES:-5}"
+PHP="${PHP_VERSION:-8.4}"
+
+IF_CHANGED=0
+[[ "${1:-}" == "--if-changed" ]] && IF_CHANGED=1
+
+[[ $EUID -eq 0 ]] || { echo "Run as root (sudo 2drivescan-deploy)." >&2; exit 1; }
+
+log() { printf '==> %s\n' "$*"; }
+as_app() { runuser -u "${APP_USER}" -- "$@"; }
+artisan() { (cd "$1/website" && runuser -u www-data -- php artisan "${@:2}"); }
+
+exec 9>"${APP_DIR}/.deploy.lock"
+if ! flock -n 9; then
+    echo "Another deploy is running." >&2
+    exit $(( IF_CHANGED ? 0 : 1 ))
+fi
+
+DEPLOYED=""
+[[ -f "${APP_DIR}/current/.commit" ]] && DEPLOYED="$(cat "${APP_DIR}/current/.commit")"
+
+if [[ "${IF_CHANGED}" == "1" ]]; then
+    if ! LATEST="$(as_app timeout 60 git ls-remote "${REPO_URL}" "refs/heads/${BRANCH}" | cut -f1)" || [[ -z "${LATEST}" ]]; then
+        echo "Could not reach ${REPO_URL}; trying again next time."
+        exit 0
+    fi
+    [[ "${LATEST}" == "${DEPLOYED}" ]] && exit 0
+    # A commit whose deploy failed is not retried every 5 minutes; the next push
+    # (or a manual 2drivescan-deploy) tries again.
+    if [[ -f "${APP_DIR}/.failed-commit" && "$(cat "${APP_DIR}/.failed-commit")" == "${LATEST}" ]]; then
+        exit 0
+    fi
+    log "main moved: ${DEPLOYED:0:7} -> ${LATEST:0:7}"
+fi
+
+RELEASE="$(date -u +%Y%m%d%H%M%S)"
+NEW="${APP_DIR}/releases/${RELEASE}"
+PREVIOUS=""
+[[ -L "${APP_DIR}/current" ]] && PREVIOUS="$(readlink -f "${APP_DIR}/current")"
+
+log "Cloning ${BRANCH} into releases/${RELEASE}"
+as_app git clone --quiet --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${NEW}"
+COMMIT="$(as_app git -C "${NEW}" rev-parse HEAD)"
+rm -rf "${NEW}/.git"
+echo "${COMMIT}" > "${NEW}/.commit"
+echo "${RELEASE} (${COMMIT:0:7})" > "${NEW}/.release"
+
+# Any failure from here on marks this commit as failed (see --if-changed).
+trap 'echo "${COMMIT}" > "${APP_DIR}/.failed-commit"' EXIT
+
+log "Linking shared files"
+rm -rf "${NEW}/website/storage"
+ln -s "${APP_DIR}/shared/storage" "${NEW}/website/storage"
+ln -sfn "${APP_DIR}/shared/.env" "${NEW}/website/.env"
+
+log "Installing PHP dependencies"
+(cd "${NEW}/website" && as_app composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --no-progress --quiet)
+
+log "Copying the app UI, screenshots and icons (site:sync)"
+(cd "${NEW}/website" && as_app php artisan site:sync --quiet)
+
+chown -R "${APP_USER}:www-data" "${NEW}"
+find "${NEW}" -type d -exec chmod 2750 {} +
+find "${NEW}" -type f -exec chmod 0640 {} +
+chmod 0750 "${NEW}/website/artisan"
+chmod -R 2770 "${NEW}/website/bootstrap/cache"
+
+# Shared storage stays writable for PHP (www-data) and the deploy user.
+chown -R "${APP_USER}:www-data" "${APP_DIR}/shared/storage"
+find "${APP_DIR}/shared/storage" -type d -exec chmod 2775 {} +
+find "${APP_DIR}/shared/storage" -type f -exec chmod ug+rw {} +
+
+log "Caching configuration, routes and views"
+artisan "${NEW}" optimize --quiet
+
+log "Fetching the latest app release from GitHub"
+artisan "${NEW}" releases:refresh || echo "releases:refresh failed; the site falls back to the cached answer." >&2
+
+switch_to() {
+    ln -sfn "$1" "${APP_DIR}/current.tmp"
+    mv -Tf "${APP_DIR}/current.tmp" "${APP_DIR}/current"
+    systemctl reload "php${PHP}-fpm"
+}
+
+log "Activating release ${RELEASE}"
+switch_to "${NEW}"
+
+log "Health check"
+healthy=1
+for path in /up / /nl /download /changelog /demo/index.html; do
+    # A few tries: the first request after the PHP-FPM reload can be reset (502).
+    for try in 1 2 3; do
+        code="$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${DOMAIN}" -H 'X-Forwarded-Proto: https' "http://127.0.0.1${path}" || echo 000)"
+        [[ "${code}" == "200" ]] && break
+        sleep 2
+    done
+    echo "  ${path} -> ${code}"
+    [[ "${code}" == "200" ]] || healthy=0
+done
+
+if [[ "${healthy}" != "1" ]]; then
+    if [[ -n "${PREVIOUS}" && -d "${PREVIOUS}" && "${PREVIOUS}" != "${NEW}" ]]; then
+        echo "Health check failed: rolling back to $(basename "${PREVIOUS}")." >&2
+        switch_to "${PREVIOUS}"
+    fi
+    echo "Health check failed for ${COMMIT:0:7}." >&2
+    exit 1
+fi
+
+trap - EXIT
+rm -f "${APP_DIR}/.failed-commit"
+
+log "Cleaning up old releases (keeping ${KEEP_RELEASES})"
+# Real directories only: a symlink there must not take its target with it.
+find "${APP_DIR}/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn \
+    | tail -n +"$((KEEP_RELEASES + 1))" | cut -d' ' -f2- | xargs -r -d '\n' rm -rf --
+
+log "Deployed ${RELEASE} (${COMMIT:0:7})"

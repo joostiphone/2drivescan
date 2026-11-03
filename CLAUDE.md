@@ -20,12 +20,15 @@ The owner communicates in Dutch; the app UI and repo docs are English (UI also h
 ## Website (`website/`, 2drivescan.app)
 - Laravel 13, no database, no build step. Texts in `website/lang/{en,nl}/site.php` (keep both in sync).
 - The site shows downloads live from GitHub Releases, embeds `ui/` as a live demo, and renders
-  `CHANGELOG.md` / `CHANGELOG.nl.md`. The server pulls `main` every 5 minutes (`website/deploy/update.sh`).
+  `CHANGELOG.md` / `CHANGELOG.nl.md`. The server deploys `main` every 5 minutes (`website/deploy/2drivescan-deploy`,
+  atomic releases with health check and rollback; layout in `website/README.md`).
 - **Whenever the app changes, update the website in the same change:** feature texts in both languages,
   `docs/screenshots/` (re-render with Playwright), and both changelogs. Pushing to `main` deploys it.
 - Tests: `cd website && php artisan test && ./vendor/bin/pint --test`.
-- Server: self-hosted at the owner's home network; it is not reachable from cloud sessions. Server work
-  goes through the owner's Mac via Remote Control.
+- Server: CT 142 (192.168.1.145) in the owner's home network, nginx + PHP 8.4, published through a
+  Cloudflare Tunnel (connector on CT 101). Not reachable from cloud sessions: server work goes through the
+  owner's Remote Control session "Laravel omgeving 2DriveScan.app" on the Proxmox host (send_message).
+  Changes to `website/deploy/2drivescan-deploy` must also be copied to `/usr/local/bin/` there.
 
 ## Releasing
 1. `node scripts/bump-version.mjs X.Y.Z`, run `cargo update --workspace` (updates Cargo.lock), commit.
