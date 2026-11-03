@@ -68,9 +68,16 @@ pub(crate) fn list_dir(path: &Path) -> Result<Listing, ListError> {
     #[cfg(target_os = "macos")]
     {
         match macos::list_dir_bulk(path) {
-            Ok(listing) => return Ok(listing),
-            Err(macos::BulkError::Io(err)) => return Err(classify(err)),
-            Err(macos::BulkError::Unsupported) => {}
+            Ok(listing) if listing.errors == 0 => return Ok(listing),
+            // No permission, gone, not a folder, or cloud-only: read_dir
+            // would fail the same way.
+            Err(macos::BulkError::Io(err))
+                if matches!(err.raw_os_error(), Some(1 | 2 | 11 | 13 | 20)) =>
+            {
+                return Err(classify(err))
+            }
+            // Anything unexpected: use the portable listing for this folder.
+            _ => {}
         }
     }
     list_dir_std(path)
@@ -247,7 +254,6 @@ mod macos {
     const ATTR_CMN_RETURNED_ATTRS: u32 = 0x8000_0000;
     const ATTR_FILE_LINKCOUNT: u32 = 0x0000_0001;
     const ATTR_FILE_ALLOCSIZE: u32 = 0x0000_0004;
-    const FSOPT_PACK_INVAL_ATTRS: u64 = 0x0000_0008;
 
     const VREG: u32 = 1;
     const VDIR: u32 = 2;
@@ -258,17 +264,13 @@ mod macos {
     const IOPOL_SCOPE_PROCESS: c_int = 0;
     const IOPOL_MATERIALIZE_DATALESS_FILES_OFF: c_int = 1;
 
-    // Entry layout with FSOPT_PACK_INVAL_ATTRS: every requested attribute is
-    // present, in bit order, each aligned to 4 bytes.
-    const OFF_RETURNED: usize = 4; // attribute_set_t (5 × u32)
-    const OFF_NAME: usize = 24; // attrreference_t { i32 offset, u32 length }
-    const OFF_DEVID: usize = 32; // dev_t (i32)
-    const OFF_OBJTYPE: usize = 36; // fsobj_type_t (u32)
-    const OFF_MODTIME: usize = 40; // struct timespec (i64, i64)
-    const OFF_FILEID: usize = 56; // u64
-    const OFF_LINKCOUNT: usize = 64; // u32
-    const OFF_ALLOCSIZE: usize = 68; // off_t (i64)
-    const FIXED_LEN: usize = 76;
+    // Each entry starts with its length (u32) and the set of attributes that
+    // are actually present (attribute_set_t, 5 × u32). The present attributes
+    // follow in bit order, each aligned to 4 bytes; a folder, for example, has
+    // no file attributes. This is the layout Apple documents in the
+    // getattrlistbulk(2) example.
+    const OFF_RETURNED: usize = 4;
+    const HEADER_LEN: usize = 24;
 
     extern "C" {
         fn getattrlistbulk(
@@ -351,7 +353,7 @@ mod macos {
                         (&mut attrs as *mut AttrList).cast(),
                         buf.as_mut_ptr().cast(),
                         buf.len(),
-                        FSOPT_PACK_INVAL_ATTRS,
+                        0,
                     )
                 };
                 if count < 0 {
@@ -373,8 +375,10 @@ mod macos {
                         return Err(invalid("truncated getattrlistbulk buffer"));
                     }
                     let len = u32_at(&buf, off) as usize;
-                    if len < FIXED_LEN || off + len > buf.len() {
-                        return Err(invalid("malformed getattrlistbulk entry"));
+                    if len < HEADER_LEN || off + len > buf.len() {
+                        return Err(invalid(&format!(
+                            "malformed getattrlistbulk entry (length {len} at {off} of {count})"
+                        )));
                     }
                     parse_entry(&buf[off..off + len], path, &mut out);
                     off += len;
@@ -384,60 +388,101 @@ mod macos {
         Ok(out)
     }
 
+    /// Reads the attributes of one entry in order, skipping absent ones.
+    struct Cursor<'a> {
+        e: &'a [u8],
+        pos: usize,
+    }
+
+    impl Cursor<'_> {
+        fn take(&mut self, len: usize) -> Option<usize> {
+            let at = self.pos;
+            if at + len > self.e.len() {
+                return None;
+            }
+            self.pos += len;
+            Some(at)
+        }
+    }
+
     fn parse_entry(e: &[u8], dir: &Path, out: &mut Listing) {
-        let returned_common = u32_at(e, OFF_RETURNED);
-        let returned_file = u32_at(e, OFF_RETURNED + 12);
+        if parse_fields(e, dir, out).is_none() {
+            out.errors += 1;
+        }
+    }
 
-        if returned_common & ATTR_CMN_NAME == 0 {
-            out.errors += 1;
-            return;
+    fn parse_fields(e: &[u8], dir: &Path, out: &mut Listing) -> Option<()> {
+        let common = u32_at(e, OFF_RETURNED);
+        let file = u32_at(e, OFF_RETURNED + 12);
+        let mut c = Cursor { e, pos: HEADER_LEN };
+
+        if common & ATTR_CMN_NAME == 0 {
+            return None;
         }
-        let name_ref = OFF_NAME as i64 + i32_at(e, OFF_NAME) as i64;
-        let name_len = u32_at(e, OFF_NAME + 4) as usize;
-        if name_ref < 0 || name_len == 0 || name_ref as usize + name_len > e.len() {
-            out.errors += 1;
-            return;
+        let name_at = c.take(8)?;
+        let name_start = (name_at as i64 + i32_at(e, name_at) as i64) as usize;
+        let name_len = u32_at(e, name_at + 4) as usize;
+        if name_len == 0 || name_start + name_len > e.len() {
+            return None;
         }
-        let start = name_ref as usize;
         // The length includes the terminating NUL.
-        let name_bytes = &e[start..start + name_len - 1];
-        let name: Box<str> = String::from_utf8_lossy(name_bytes).into();
+        let name: Box<str> =
+            String::from_utf8_lossy(&e[name_start..name_start + name_len - 1]).into();
 
-        let kind = match u32_at(e, OFF_OBJTYPE) {
+        // Same conversion as std's MetadataExt::dev() (dev_t is i32).
+        let dev = if common & ATTR_CMN_DEVID != 0 {
+            i32_at(e, c.take(4)?) as u64
+        } else {
+            0
+        };
+        let objtype = if common & ATTR_CMN_OBJTYPE != 0 {
+            u32_at(e, c.take(4)?)
+        } else {
+            0
+        };
+        let mtime = if common & ATTR_CMN_MODTIME != 0 {
+            let at = c.take(16)?;
+            i64_at(e, at)
+                .saturating_mul(1_000_000_000)
+                .saturating_add(i64_at(e, at + 8))
+        } else {
+            0
+        };
+        let ino = if common & ATTR_CMN_FILEID != 0 {
+            u64_at(e, c.take(8)?)
+        } else {
+            0
+        };
+        let mut nlink = 1;
+        if file & ATTR_FILE_LINKCOUNT != 0 {
+            nlink = u32_at(e, c.take(4)?);
+        }
+        let alloc = if file & ATTR_FILE_ALLOCSIZE != 0 {
+            Some(i64_at(e, c.take(8)?).max(0) as u64)
+        } else {
+            None
+        };
+
+        let kind = match objtype {
             VDIR => EntryKind::Dir,
             VREG => EntryKind::File,
             VLNK => EntryKind::Link,
             _ => EntryKind::Other,
         };
-        let mtime = if returned_common & ATTR_CMN_MODTIME != 0 {
-            i64_at(e, OFF_MODTIME)
-                .saturating_mul(1_000_000_000)
-                .saturating_add(i64_at(e, OFF_MODTIME + 8))
-        } else {
-            0
-        };
-        // Same conversion as std's MetadataExt::dev() (dev_t is i32).
-        let dev = i32_at(e, OFF_DEVID) as u64;
-        let ino = u64_at(e, OFF_FILEID);
-
-        let (size, nlink) = if kind == EntryKind::Dir {
-            (0, 1)
-        } else if returned_file & ATTR_FILE_ALLOCSIZE != 0 {
-            let nlink = if returned_file & ATTR_FILE_LINKCOUNT != 0 {
-                u32_at(e, OFF_LINKCOUNT)
-            } else {
-                1
-            };
-            (i64_at(e, OFF_ALLOCSIZE).max(0) as u64, nlink)
-        } else {
+        let size = match (kind, alloc) {
+            (EntryKind::Dir, _) => 0,
+            (_, Some(size)) => size,
             // Rare: the file system did not report a size; ask for it.
-            match super::stat(&dir.join(&*name)) {
-                Ok(raw) => (raw.size, raw.nlink),
+            _ => match super::stat(&dir.join(&*name)) {
+                Ok(raw) => {
+                    nlink = raw.nlink;
+                    raw.size
+                }
                 Err(_) => {
                     out.errors += 1;
-                    (0, 1)
+                    0
                 }
-            }
+            },
         };
 
         out.entries.push(RawEntry {
@@ -449,6 +494,7 @@ mod macos {
             nlink,
             mtime,
         });
+        Some(())
     }
 }
 
@@ -497,8 +543,12 @@ mod tests {
         .unwrap();
 
         let mut bulk = match macos::list_dir_bulk(dir.path()) {
-            Ok(l) => l.entries,
-            Err(_) => panic!("getattrlistbulk failed"),
+            Ok(l) => {
+                assert_eq!(l.errors, 0, "entries could not be parsed");
+                l.entries
+            }
+            Err(macos::BulkError::Io(e)) => panic!("getattrlistbulk failed: {e:?}"),
+            Err(macos::BulkError::Unsupported) => panic!("getattrlistbulk unsupported"),
         };
         let mut std = list_dir_std(dir.path()).unwrap().entries;
         bulk.sort_by(|a, b| a.name.cmp(&b.name));
