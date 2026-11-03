@@ -18,7 +18,7 @@ The owner communicates in Dutch; the app UI and repo docs are English (UI also h
 - UI check without a desktop: `npm run preview`, then screenshot with Playwright.
 
 ## Releasing
-1. `node scripts/bump-version.mjs X.Y.Z`, run `cargo check` (updates Cargo.lock), commit.
+1. `node scripts/bump-version.mjs X.Y.Z`, run `cargo update --workspace` (updates Cargo.lock), commit.
 2. `git tag vX.Y.Z && git push origin main vX.Y.Z` – `.github/workflows/release.yml` builds macOS (universal dmg),
    Windows (x64 msi/nsis, arm64 nsis), Linux (x64 + arm64 deb/rpm/AppImage) and publishes the release.
 3. Website (2drivescan.app) must be updated for every release too – hosting/SSH details still to come from the owner.

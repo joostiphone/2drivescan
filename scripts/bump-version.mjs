@@ -18,7 +18,11 @@ function edit(rel, fn) {
   const file = join(root, rel);
   const before = readFileSync(file, 'utf8');
   const after = fn(before);
-  if (before === after) throw new Error(`no version found in ${rel}`);
+  if (before === after) {
+    if (!before.includes(version)) throw new Error(`no version found in ${rel}`);
+    console.log(`${rel} already at ${version}`);
+    return;
+  }
   writeFileSync(file, after);
   console.log(`updated ${rel}`);
 }
@@ -27,5 +31,11 @@ const cargoVersion = (s) => s.replace(/^version = "[^"]+"/m, `version = "${versi
 edit('src-tauri/Cargo.toml', cargoVersion);
 edit('crates/scan-core/Cargo.toml', cargoVersion);
 edit('package.json', (s) => s.replace(/"version": "[^"]+"/, `"version": "${version}"`));
+edit('package-lock.json', (s) => {
+  const lock = JSON.parse(s);
+  lock.version = version;
+  if (lock.packages?.['']) lock.packages[''].version = version;
+  return `${JSON.stringify(lock, null, 2)}\n`;
+});
 edit('ui/js/mock.js', (s) => s.replace(/version: '[^']+'/, `version: '${version}'`));
-console.log(`\nVersion set to ${version}. Run \`cargo check\` to refresh Cargo.lock, then commit and tag v${version}.`);
+console.log(`\nVersion set to ${version}. Run \`cargo update --workspace\` to refresh Cargo.lock, then commit and tag v${version}.`);
