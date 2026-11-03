@@ -1,0 +1,8 @@
+# Settings for /usr/local/bin/2drivescan-deploy. Installed as
+# /etc/default/2drivescan-deploy by deploy/install.sh.
+APP_DIR="/var/www/2drivescan"
+APP_USER="deploy"
+REPO_URL="https://github.com/joostiphone/2drivescan.git"
+BRANCH="main"
+DOMAIN="2drivescan.app"
+PHP_VERSION="8.4"

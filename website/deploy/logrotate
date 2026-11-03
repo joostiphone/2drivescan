@@ -1,0 +1,14 @@
+# Laravel logs of 2drivescan.app. Installed as /etc/logrotate.d/2drivescan.
+# nginx logs (/var/log/nginx/*.log) are already rotated by Debian's own
+# /etc/logrotate.d/nginx; listing them here too makes logrotate fail with
+# "duplicate log entry".
+/var/www/2drivescan/shared/storage/logs/*.log {
+    su www-data www-data
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

@@ -52,14 +52,26 @@ Production runs on a Debian 13 container (CT 142) with nginx and PHP 8.4:
 2drivescan-update.timer               runs `2drivescan-deploy --if-changed` every 5 minutes
 ```
 
-To set up a new server: enable an nginx site like `deploy/nginx.conf`, then run as root
+All server configuration lives in `deploy/`, exactly as used in production:
+
+| File | Installed as |
+| --- | --- |
+| `2drivescan-deploy` | `/usr/local/bin/2drivescan-deploy` |
+| `2drivescan-deploy.default` | `/etc/default/2drivescan-deploy` |
+| `nginx.conf` | `/etc/nginx/sites-available/2drivescan` (anonymised access log, only `index.php` runs) |
+| `php-fpm-pool.conf` | `/etc/php/8.4/fpm/pool.d/2drivescan.conf` (`open_basedir`, `disable_functions`) |
+| `logrotate` | `/etc/logrotate.d/2drivescan` (Laravel logs only; nginx logs are rotated by Debian) |
+| `systemd/2drivescan-update.{service,timer}` | `/etc/systemd/system/` |
+
+To set up a new server (Debian/Ubuntu with nginx, PHP-FPM 8.3+, Composer and git), run as root:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/joostiphone/2drivescan/main/website/deploy/install.sh | bash
 ```
 
-After changing `deploy/2drivescan-deploy` in the repo, copy it to `/usr/local/bin/` on the server; the
-script does not update itself.
+It never overwrites existing configuration files. After changing `deploy/2drivescan-deploy` in the repo,
+copy it to `/usr/local/bin/` on the server (running `install.sh` again does that); the script does not
+update itself.
 
 ### HTTPS with Cloudflare Tunnel
 

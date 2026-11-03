@@ -1,0 +1,8 @@
+[Unit]
+Description=Deploy 2drivescan.app when main on GitHub has new commits
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/2drivescan-deploy --if-changed
