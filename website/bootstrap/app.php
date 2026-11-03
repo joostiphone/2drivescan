@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CanonicalHost;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -14,6 +15,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias(['locale' => SetLocale::class]);
+        $middleware->prepend(CanonicalHost::class);
+        // Cloudflare Tunnel (cloudflared) talks to the web server on this machine and
+        // passes the visitor's scheme and address in X-Forwarded-* headers.
+        $middleware->trustProxies(at: ['127.0.0.1', '::1']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

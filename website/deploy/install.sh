@@ -72,5 +72,6 @@ systemctl daemon-reload
 systemctl enable --now 2drivescan-update.timer
 
 echo
-echo "Done. Point your web server at ${REPO_DIR}/website/public (example: deploy/nginx.conf)."
+echo "Done. Point your web server at ${REPO_DIR}/website/public (example: deploy/nginx.conf)"
+echo "and publish it over HTTPS with Cloudflare Tunnel (see website/README.md)."
 echo "Logs of automatic updates: journalctl -u 2drivescan-update"

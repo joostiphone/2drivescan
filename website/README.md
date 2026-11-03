@@ -43,8 +43,25 @@ On a Debian/Ubuntu server with PHP 8.3+, Composer and git:
 curl -fsSL https://raw.githubusercontent.com/joostiphone/2drivescan/main/website/deploy/install.sh | bash
 ```
 
-Then point the web server at `/var/www/2drivescan/website/public` (example: `deploy/nginx.conf`) and put HTTPS
-in front of it. `.app` domains only work over HTTPS. Useful commands:
+Then point the web server at `/var/www/2drivescan/website/public` (example: `deploy/nginx.conf`, listening on
+port 80 locally).
+
+### HTTPS with Cloudflare Tunnel
+
+`.app` domains only work over HTTPS. The domain is managed in Cloudflare, so the server publishes the site
+through a Cloudflare Tunnel: `cloudflared` on the server opens an outbound connection to Cloudflare, no ports
+have to be opened on the router, and Cloudflare handles the certificate.
+
+1. Cloudflare dashboard → *Zero Trust → Networks → Tunnels → Create a tunnel* → type **Cloudflared**, name
+   `2drivescan`.
+2. Choose Debian/Ubuntu and run the install command it shows on the server (it contains the tunnel token).
+3. Add two public hostnames, both with service **HTTP** → `localhost:80`:
+   `2drivescan.app` and `www.2drivescan.app`. Cloudflare creates the DNS records itself.
+
+Laravel trusts `X-Forwarded-*` headers from `127.0.0.1` (where cloudflared connects from), forces `https://`
+links in production, and redirects `www.` to the bare domain.
+
+### Useful commands
 
 ```bash
 journalctl -u 2drivescan-update             # deploy log
