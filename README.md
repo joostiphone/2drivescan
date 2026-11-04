@@ -35,6 +35,8 @@
   Trash or Recycle Bin in one go. Nothing is ever deleted permanently, so you can always restore items.
 - **Native everywhere.** Light and dark mode, English and Dutch, reveal in Finder, Explorer or your file
   manager, and keyboard shortcuts.
+- **Settings.** Theme, language, 1000- or 1024-based sizes, chart depth and animations, saved scans, and
+  updates, in one window (`Ctrl/⌘ + ,`).
 - **Automatic updates.** One click installs a new version; updates are signed and verified.
 
 ![Light mode with file type colors](docs/screenshots/types-light.png)
@@ -64,6 +66,7 @@ Get the latest installers from the [Releases page](https://github.com/joostiphon
 | Search in the current folder | `/` or `Ctrl/⌘ + F` |
 | Rescan (only changed folders) | `Ctrl/⌘ + R` |
 | Full rescan | Alt/Option-click the rescan button |
+| Settings | `Ctrl/⌘ + ,` |
 
 ## Development
 

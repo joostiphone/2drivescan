@@ -1,14 +1,17 @@
 import { api, listen, isPreview } from './api.js';
-import { t, lang } from './i18n.js';
+import { t, lang, setLanguage } from './i18n.js';
 import { bytes, bytesParts, count, percent, duration, truncateMiddle, escapeHtml as esc, setBinaryUnits } from './format.js';
 import { icon } from './icons.js';
 import { Sunburst } from './sunburst.js';
 import { CATEGORIES, CATEGORY_COLORS, HIDDEN_COLOR, GROUP_COLOR, css } from './colors.js';
+import { getPref, setPref, animationsOn } from './prefs.js';
+import { initSettings, openSettings, toggleSettings, settingsOpen, closeSettings, refreshSettings, settingsProgress, URLS } from './settings.js';
 
-const RINGS = 5;
 const LIST_LIMIT = 1500;
-const REPO_URL = 'https://github.com/joostiphone/2drivescan';
-const FDA_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles';
+const REPO_URL = URLS.repo;
+const FDA_URL = URLS.fda;
+/** Folder levels the chart shows (a setting). */
+const rings = () => +getPref('rings');
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -23,7 +26,7 @@ const state = {
   focusId: 0,
   view: null,
   tab: 'contents',
-  colorMode: 'folder',
+  colorMode: getPref('colorMode'),
   query: '',
   collector: new Map(),
   rows: new Map(),
@@ -99,15 +102,12 @@ async function copyText(text) {
 
 // ------------------------------------------------------------------ theme
 
+const systemTheme = () => (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+
 function loadTheme() {
-  let saved = null;
-  try {
-    saved = localStorage.getItem('2ds-theme');
-  } catch {
-    /* storage unavailable */
-  }
+  const saved = getPref('theme');
   const fromUrl = new URLSearchParams(location.search).get('theme');
-  return fromUrl || saved || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  return fromUrl || (saved === 'system' ? systemTheme() : saved);
 }
 
 function applyTheme(theme) {
@@ -125,12 +125,73 @@ function syncChartTheme() {
 
 function toggleTheme() {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  try {
-    localStorage.setItem('2ds-theme', next);
-  } catch {
-    /* ignore */
-  }
+  setPref('theme', next);
   applyTheme(next);
+  refreshSettings();
+}
+
+// ------------------------------------------------------------------ preferences
+
+function applyUnits() {
+  const u = getPref('units');
+  setBinaryUnits(u === 'binary' || (u === 'auto' && isWindows()));
+}
+
+function applyMotion() {
+  const on = animationsOn();
+  document.body.classList.toggle('no-motion', !on);
+  chart?.setAnimate(on);
+}
+
+/** Applies a changed setting (called by the settings dialog). */
+function applyPref(name, value) {
+  setPref(name, value);
+  switch (name) {
+    case 'theme':
+      applyTheme(value === 'system' ? systemTheme() : value);
+      break;
+    case 'language':
+      setLanguage(value);
+      refreshUI();
+      break;
+    case 'units':
+      applyUnits();
+      refreshUI();
+      break;
+    case 'colorMode':
+      if (document.body.dataset.screen === 'result') setColorMode(value);
+      else state.colorMode = value;
+      break;
+    case 'rings':
+      if (document.body.dataset.screen === 'result') rebuildResult();
+      break;
+    case 'motion':
+      applyMotion();
+      break;
+  }
+}
+
+/** Re-renders everything with text or sizes in it (language or units changed). */
+function refreshUI() {
+  labelTitlebar();
+  const screen = document.body.dataset.screen;
+  if (screen === 'home') renderHome();
+  else if (screen === 'scan') renderScan();
+  else if (screen === 'result') rebuildResult();
+  $('.preview-badge') && ($('.preview-badge').textContent = t('preview_mode'));
+  renderUpdateBanner();
+  refreshSettings();
+}
+
+/** Builds the result screen again at the folder that is open. */
+function rebuildResult() {
+  if (!state.result) return;
+  state.query = '';
+  hideTooltip();
+  hideMenu();
+  renderResultShell();
+  setColorMode(state.colorMode);
+  navigate(state.focusId, 'pop');
 }
 
 // ------------------------------------------------------------------ home
@@ -174,12 +235,11 @@ function renderHome() {
         <span>${esc(t('version', { v: state.info.version }))}</span>
         <button class="link-btn" data-url="${REPO_URL}">${icon('github')} GitHub</button>
         <span>${esc(t('free_open_source'))}</span>
-        ${isPreview ? '' : `<button class="link-btn" id="upd-check" type="button">${icon('refresh')} ${esc(t('update_check'))}</button>
-        <button class="link-btn" id="upd-auto" type="button"></button>`}
+        <button class="link-btn" id="home-settings" type="button">${icon('gear')} ${esc(t('settings'))}</button>
       </div>
     </div>`;
   el.querySelector('[data-url]').addEventListener('click', (e) => api.openExternal(e.currentTarget.dataset.url).catch(() => {}));
-  setupUpdateControls();
+  $('#home-settings').addEventListener('click', () => openSettings('general'));
   loadVolumes();
 }
 
@@ -452,7 +512,8 @@ function renderResultShell() {
     </div>`;
 
   chart = new Sunburst($('#chart'), {
-    rings: RINGS,
+    rings: rings(),
+    animate: animationsOn(),
     hiddenLabel: t('hidden_space'),
     canGoUp: () => state.focusId !== state.rootId,
     onGeometry: positionCenter,
@@ -520,6 +581,7 @@ function clearSearch(refresh = true) {
 
 function setColorMode(mode) {
   state.colorMode = mode;
+  setPref('colorMode', mode);
   chart?.setMode(mode);
   document.querySelectorAll('#colormode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
   // Row colors depend on the chart colors.
@@ -616,7 +678,7 @@ async function navigate(id, mode = 'pop', anchorId = null) {
   const token = ++state.navToken;
   let view;
   try {
-    view = await api.getView(id, mode === 'out' ? RINGS + 1 : RINGS);
+    view = await api.getView(id, mode === 'out' ? rings() + 1 : rings());
   } catch (e) {
     if (id !== state.rootId) return navigate(state.rootId, 'pop');
     toast(errText(e), 'err');
@@ -1083,60 +1145,59 @@ function confirmTrash() {
 
 // ------------------------------------------------------------------ updates
 
-const CHANGELOG_URL = 'https://2drivescan.app/changelog';
-const DOWNLOAD_URL = 'https://2drivescan.app/download';
-const update = { info: null, checked: false, installing: false, error: null };
-
-function autoUpdatesEnabled() {
-  try {
-    return localStorage.getItem('2ds-auto-update') !== 'off';
-  } catch {
-    return true;
-  }
-}
-
-function setupUpdateControls() {
-  const auto = $('#upd-auto');
-  const check = $('#upd-check');
-  if (!auto || !check) return;
-  const label = () => (auto.innerHTML = `${icon(autoUpdatesEnabled() ? 'check' : 'x')} ${esc(t(autoUpdatesEnabled() ? 'update_auto_on' : 'update_auto_off'))}`);
-  label();
-  auto.addEventListener('click', () => {
-    try {
-      localStorage.setItem('2ds-auto-update', autoUpdatesEnabled() ? 'off' : 'on');
-    } catch {
-      /* ignore */
-    }
-    label();
-  });
-  check.addEventListener('click', async () => {
-    check.disabled = true;
-    check.innerHTML = `${icon('refresh')} ${esc(t('update_checking'))}`;
-    const found = await checkForUpdate(true);
-    check.disabled = false;
-    check.innerHTML = `${icon('refresh')} ${esc(t('update_check'))}`;
-    if (!found && found !== undefined) toast(t('update_none', { version: state.info.version }));
-  });
-}
+const CHANGELOG_URL = URLS.changelog;
+const DOWNLOAD_URL = URLS.download;
+const update = {
+  info: null,
+  checked: false,
+  checking: false,
+  checkError: null,
+  installing: false,
+  error: null,
+  progress: null,
+  dismissed: false,
+};
 
 /** Returns true when an update was found, false when none, undefined on error. */
 async function checkForUpdate(manual = false) {
-  if (isPreview || update.installing) return false;
+  if (isPreview || update.installing || update.checking) return false;
+  update.checking = true;
+  update.checkError = null;
+  refreshSettings();
   try {
     update.info = await api.checkUpdate();
+    update.checked = true;
+    update.error = null;
+    if (manual) update.dismissed = false;
+    setPref('updateChecked', Date.now());
   } catch (e) {
-    if (manual) toast(`${t('update_check')}: ${errText(e)}`, 'err');
+    update.checkError = errText(e);
+    if (manual && !settingsOpen()) toast(t('upd_check_failed', { error: update.checkError }), 'err');
     return undefined;
+  } finally {
+    update.checking = false;
+    renderUpdateBanner();
+    refreshSettings();
   }
-  update.checked = true;
-  renderUpdateBanner();
   return !!update.info;
 }
 
-function renderUpdateBanner(progress = null) {
+function onUpdateProgress(p) {
+  update.progress = p;
+  renderUpdateBanner();
+  settingsProgress(p);
+}
+
+function updateBadge() {
+  const b = $('#btn-settings');
+  if (b) b.classList.toggle('has-badge', !!update.info && !update.installing);
+}
+
+function renderUpdateBanner() {
+  updateBadge();
   const el = $('#update-banner');
   if (!el) return;
-  if (!update.info) {
+  if (!update.info || (update.dismissed && !update.installing && !update.error)) {
     el.hidden = true;
     return;
   }
@@ -1152,18 +1213,24 @@ function renderUpdateBanner(progress = null) {
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'download') api.openExternal(DOWNLOAD_URL).catch(() => {});
       if (act === 'retry') installUpdate();
-      if (act === 'later') el.hidden = true;
+      if (act === 'later') {
+        update.error = null;
+        update.dismissed = true;
+        renderUpdateBanner();
+      }
     };
     return;
   }
   if (update.installing) {
-    const pct = progress && progress.total ? Math.round((progress.downloaded / progress.total) * 100) : null;
+    const p = update.progress;
+    const pct = p && p.total ? Math.round((p.downloaded / p.total) * 100) : null;
     const done = pct === 100;
     el.innerHTML = `
       <div class="ub-icon">${icon('refresh')}</div>
       <div class="ub-text">${esc(done ? t('update_installing') : t('update_downloading', { pct: pct == null ? '' : `${pct}%` }))}
         <div class="ub-bar"><div style="width:${pct ?? 8}%"></div></div>
       </div>`;
+    el.onclick = null;
     return;
   }
   el.innerHTML = `
@@ -1172,46 +1239,61 @@ function renderUpdateBanner(progress = null) {
       <button class="ub-link" type="button" data-act="notes">${esc(t('update_whats_new'))}</button></div>
     <button class="btn btn-sm primary" type="button" data-act="install">${esc(t('update_install'))}</button>
     <button class="icon-btn" type="button" data-act="later" title="${esc(t('update_later'))}">${icon('x')}</button>`;
-  el.onclick = async (e) => {
+  el.onclick = (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (act === 'notes') api.openExternal(`${CHANGELOG_URL}#v${update.info.version}`).catch(() => {});
-    if (act === 'later') el.hidden = true;
+    if (act === 'later') {
+      update.dismissed = true;
+      renderUpdateBanner();
+    }
     if (act === 'install') installUpdate();
   };
 }
 
 async function installUpdate() {
-  if (document.body.dataset.screen === 'scan') return;
+  if (document.body.dataset.screen === 'scan' || update.installing || !update.info) return;
   update.installing = true;
   update.error = null;
+  update.progress = null;
+  update.dismissed = false;
   renderUpdateBanner();
+  refreshSettings();
   try {
     await api.installUpdate(); // Restarts the app when it succeeds.
   } catch (e) {
     update.installing = false;
     update.error = errText(e);
     renderUpdateBanner();
+    refreshSettings();
   }
 }
 
 // ------------------------------------------------------------------ setup
 
 function setupTitlebar() {
-  const home = $('#btn-home');
-  home.innerHTML = icon('home');
-  home.title = t('back_home');
-  home.addEventListener('click', showHome);
-  const up = $('#btn-up');
-  up.innerHTML = icon('up');
-  up.title = t('up');
-  up.addEventListener('click', goUp);
-  const rescan = $('#btn-rescan');
-  rescan.innerHTML = icon('refresh');
-  rescan.title = t('rescan_tip');
-  rescan.addEventListener('click', rescanCurrent);
-  const theme = $('#btn-theme');
-  theme.title = t('toggle_theme');
-  theme.addEventListener('click', toggleTheme);
+  $('#btn-home').innerHTML = icon('home');
+  $('#btn-home').addEventListener('click', showHome);
+  $('#btn-up').innerHTML = icon('up');
+  $('#btn-up').addEventListener('click', goUp);
+  $('#btn-rescan').innerHTML = icon('refresh');
+  $('#btn-rescan').addEventListener('click', rescanCurrent);
+  $('#btn-theme').addEventListener('click', toggleTheme);
+  $('#btn-settings').innerHTML = `${icon('gear')}<i class="badge-dot"></i>`;
+  $('#btn-settings').addEventListener('click', () => toggleSettings());
+  labelTitlebar();
+}
+
+/** Tooltips of the title bar buttons (again after the language changes). */
+function labelTitlebar() {
+  const label = (sel, text) => {
+    $(sel).title = text;
+    $(sel).setAttribute('aria-label', text);
+  };
+  label('#btn-home', t('back_home'));
+  label('#btn-up', t('up'));
+  label('#btn-rescan', t('rescan_tip'));
+  label('#btn-theme', t('toggle_theme'));
+  label('#btn-settings', `${t('settings')} (${isMac() ? '⌘' : 'Ctrl+'},)`);
 }
 
 /** Rescan reuses unchanged folders; hold Alt/Option for a full rescan. */
@@ -1224,6 +1306,10 @@ function setupKeyboard() {
     const inInput = e.target instanceof HTMLInputElement;
     const mod = e.metaKey || e.ctrlKey;
     if (e.key === 'Escape') {
+      if (settingsOpen()) {
+        closeSettings();
+        return;
+      }
       if ($('#modal-root').innerHTML) {
         $('#modal-root').innerHTML = '';
         return;
@@ -1235,6 +1321,13 @@ function setupKeyboard() {
       if (document.body.dataset.screen === 'result') goUp();
       return;
     }
+    if (mod && e.key === ',') {
+      e.preventDefault();
+      toggleSettings();
+      return;
+    }
+    // Shortcuts below act on the screen behind an open dialog: not now.
+    if ($('#modal-root').innerHTML) return;
     if (mod && e.key.toLowerCase() === 'r') {
       e.preventDefault();
       if (document.body.dataset.screen === 'result') rescanCurrent();
@@ -1289,23 +1382,34 @@ async function init() {
   // The platform class reserves room for native window controls, which the
   // browser preview (website demo) does not have.
   if (!isPreview) document.body.classList.add(`platform-${state.info.os}`);
-  setBinaryUnits(isWindows());
+  document.documentElement.lang = lang();
+  applyUnits();
+  applyMotion();
   setupTitlebar();
+  initSettings({
+    info: () => state.info,
+    update,
+    scanning: () => document.body.dataset.screen === 'scan',
+    timeAgo,
+    apply: applyPref,
+    checkForUpdate,
+    installUpdate,
+    toast,
+    onScansCleared: () => {
+      state.saved.clear();
+      if (document.body.dataset.screen === 'home') loadVolumes();
+    },
+  });
   setupKeyboard();
   setupGlobalDismiss();
   await listen('scan-progress', onProgress);
   await listen('scan-done', onDone);
   await listen('scan-failed', onFailed);
-  await listen('update-progress', (p) => renderUpdateBanner(p));
+  await listen('update-progress', onUpdateProgress);
   matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', (ev) => {
-    let saved = null;
-    try {
-      saved = localStorage.getItem('2ds-theme');
-    } catch {
-      /* ignore */
-    }
-    if (!saved) applyTheme(ev.matches ? 'light' : 'dark');
+    if (getPref('theme') === 'system') applyTheme(ev.matches ? 'light' : 'dark');
   });
+  matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', applyMotion);
 
   if (isPreview) {
     const b = document.createElement('div');
@@ -1315,7 +1419,7 @@ async function init() {
   }
 
   // Look for a new version a few seconds after start (can be switched off).
-  if (!isPreview && autoUpdatesEnabled()) setTimeout(() => checkForUpdate(false), 4000);
+  if (!isPreview && getPref('updateCheck') === 'on') setTimeout(() => checkForUpdate(false), 4000);
 
   const params = new URLSearchParams(location.search);
   if (params.get('demo') === 'scan') {

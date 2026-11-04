@@ -26,6 +26,8 @@ export const api = {
   pickFolder: () => invoke('pick_folder'),
   savedScans: () => invoke('saved_scans'),
   openSaved: (path) => invoke('open_saved', { path }),
+  scanStorage: () => invoke('scan_storage'),
+  clearSavedScans: () => invoke('clear_saved_scans'),
   startScan: (path, full = false) => invoke('start_scan', { path, full }),
   cancelScan: () => invoke('cancel_scan'),
   getView: (id, depth) => invoke('get_view', { id, depth }),

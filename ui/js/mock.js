@@ -353,11 +353,22 @@ export function createMock() {
   ];
 
   const handlers = {
-    app_info: () => ({ version: '0.3.0', os: 'macos', arch: 'aarch64', home: '/Users/joost', preview: true }),
+    app_info: () => ({ version: '0.4.0', os: 'macos', arch: 'aarch64', home: '/Users/joost', preview: true }),
     list_volumes: () => VOLUMES,
     pick_folder: () => '/Users/joost/Developer',
     saved_scans: () =>
       [...saved.values()].sort((a, b) => b.scanned_at_ms - a.scanned_at_ms),
+    // Roughly what the real app's saved scans take (LZ4, ~11 bytes per item).
+    scan_storage: () => ({
+      count: saved.size,
+      bytes: [...saved.values()].reduce((sum, s) => sum + (s.files + s.dirs) * 11, 0),
+      keep: 12,
+    }),
+    clear_saved_scans: () => {
+      if (currentScan) throw new Error('A scan is running; try again after it finishes.');
+      saved.clear();
+      return { count: 0, bytes: 0, keep: 12 };
+    },
     open_saved: ({ path }) => {
       const record = saved.get(path);
       if (!record || !record.complete) throw new Error('no saved scan');
@@ -396,6 +407,7 @@ export function createMock() {
         });
         if (f >= 1) {
           clearInterval(timer);
+          currentScan = null;
           const s = { ...stats(), scanned_at_ms: scannedAt };
           saved.set(path, { root_path: path, scanned_at_ms: scannedAt, elapsed_ms: el, complete: true, size: s.size - hiddenBytes, files: s.files, dirs: s.dirs, unreadable: s.unreadable, nodes: nodes.length });
           emit('scan-done', { scan_id: id, stats: s, elapsed_ms: el, volume: vol || null, saved: false });

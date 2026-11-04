@@ -325,6 +325,71 @@ fn saved_scans(app: AppHandle) -> Vec<SavedScan> {
     saved_scan_files(&app).into_iter().map(|(_, s)| s).collect()
 }
 
+#[derive(Serialize)]
+struct ScanStorage {
+    /// Saved scans that can be opened.
+    count: usize,
+    /// Space the scans folder takes, including unreadable leftovers.
+    bytes: u64,
+    /// How many scans are kept before the oldest are removed.
+    keep: usize,
+}
+
+/// Files in the scans folder: saved scans and temporary files of a save
+/// that was interrupted.
+fn scan_folder_files(app: &AppHandle) -> Vec<PathBuf> {
+    let Some(dir) = scans_dir(app) else {
+        return Vec::new();
+    };
+    std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "2ds" || x == "tmp"))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn scan_storage_of(app: &AppHandle) -> ScanStorage {
+    ScanStorage {
+        count: saved_scan_files(app).len(),
+        bytes: scan_folder_files(app)
+            .iter()
+            .filter_map(|p| std::fs::metadata(p).ok())
+            .map(|m| m.len())
+            .sum(),
+        keep: KEEP_SAVED_SCANS,
+    }
+}
+
+/// How many scans are saved and how much space they take.
+#[tauri::command(async)]
+fn scan_storage(app: AppHandle) -> ScanStorage {
+    scan_storage_of(&app)
+}
+
+/// Removes every saved scan. These are 2DriveScan's own files, not the
+/// user's, so they are deleted directly (like the oldest scans beyond
+/// `KEEP_SAVED_SCANS`) instead of being moved to the Trash. The next scan of
+/// each folder reads everything again.
+#[tauri::command(async)]
+fn clear_saved_scans(app: AppHandle, state: State<'_, AppState>) -> CmdResult<ScanStorage> {
+    if state.active.lock().map(|a| a.is_some()).unwrap_or(false) {
+        return Err("A scan is running; try again after it finishes.".into());
+    }
+    let mut first_error = None;
+    for file in scan_folder_files(&app) {
+        if let Err(e) = std::fs::remove_file(&file) {
+            first_error.get_or_insert(e.to_string());
+        }
+    }
+    match first_error {
+        Some(e) => Err(format!("not every saved scan could be removed: {e}")),
+        None => Ok(scan_storage_of(&app)),
+    }
+}
+
 /// Opens the saved scan of a folder without scanning.
 #[tauri::command(async)]
 fn open_saved(app: AppHandle, state: State<'_, AppState>, path: String) -> CmdResult<DoneEvent> {
@@ -724,6 +789,8 @@ fn main() {
             list_volumes,
             pick_folder,
             saved_scans,
+            scan_storage,
+            clear_saved_scans,
             open_saved,
             start_scan,
             cancel_scan,

@@ -1,5 +1,7 @@
 // Tiny i18n layer. English is the fallback; Dutch is included.
 
+import { getPref } from './prefs.js';
+
 const STRINGS = {
   en: {
     tagline: 'See what is taking up your space — and take it back.',
@@ -34,11 +36,7 @@ const STRINGS = {
     update_installing: 'Installing — 2DriveScan restarts in a moment',
     update_failed: 'The update could not be installed: {error}',
     update_download_manually: 'Download it manually',
-    update_none: 'You have the latest version ({version})',
-    update_check: 'Check for updates',
     update_checking: 'Checking…',
-    update_auto_on: 'Automatic updates: on',
-    update_auto_off: 'Automatic updates: off',
     rescan_tip: 'Rescan: only changed folders are read again (hold Alt/Option for a full rescan)',
     just_now: 'just now',
     scanned_ago: 'Scanned {when}',
@@ -113,6 +111,67 @@ const STRINGS = {
     cat_other: 'Other',
     cat_hidden: 'Hidden space',
     shortcuts: 'Tip: click a ring to zoom in, click the center to go back, drag items to the Collector.',
+    settings: 'Settings',
+    close: 'Close',
+    set_general: 'General',
+    set_updates: 'Updates',
+    set_scans: 'Scans',
+    set_about: 'About',
+    set_appearance: 'Appearance',
+    set_theme: 'Theme',
+    opt_system: 'System',
+    opt_auto: 'Automatic',
+    opt_on: 'On',
+    opt_off: 'Off',
+    theme_light: 'Light',
+    theme_dark: 'Dark',
+    set_language: 'Language',
+    set_units: 'Sizes',
+    set_units_hint: 'Automatic follows your system: Windows counts 1 KB as 1,024 bytes, macOS and most Linux desktops as 1,000.',
+    set_chart: 'Chart',
+    set_color_hint: 'How the chart is colored when you open a scan.',
+    set_rings: 'Folder levels',
+    set_rings_hint: 'How many rings the chart shows at once.',
+    set_motion: 'Animations',
+    set_motion_hint: 'Zoom transitions and other motion. Automatic turns them off when your system asks for reduced motion.',
+    upd_latest: 'You have the latest version',
+    upd_not_checked: 'Not checked for updates yet',
+    upd_checked_ago: 'Last checked {when}',
+    upd_check_now: 'Check now',
+    upd_check_failed: 'Could not check for updates: {error}',
+    upd_auto: 'Check for updates when 2DriveScan starts',
+    upd_auto_hint: 'This is the only thing 2DriveScan asks the internet. Nothing about your files is ever sent.',
+    upd_signed: 'Updates are signed. 2DriveScan refuses anything without a valid signature, and installs only when you click Install.',
+    upd_after_scan: 'You can install the update when the scan has finished.',
+    upd_preview: 'This is the demo in your browser. The app installs new versions with one click.',
+    upd_download_app: 'Download 2DriveScan',
+    scans_saved: 'Saved scans',
+    scans_saved_hint: 'Scans are saved so you can reopen them instantly, and a rescan only reads the folders that changed. The {keep} most recent scans are kept.',
+    scans_count: '{n} saved scans · {size}',
+    scans_count_one: '1 saved scan · {size}',
+    scans_none: 'No saved scans',
+    scans_clear: 'Remove saved scans…',
+    scans_clear_confirm: 'Remove all saved scans? Your own files are not touched. The next scan of each drive or folder reads everything again.',
+    scans_clear_ok: 'Remove saved scans',
+    scans_cleared: 'Saved scans removed — {size} freed',
+    scans_after_scan: 'Available when the scan has finished.',
+    fda_title: 'Full Disk Access',
+    fda_hint: 'macOS protects some folders, such as the data of Mail and Safari. Without access, 2DriveScan counts them as hidden space.',
+    fda_open: 'Open System Settings',
+    about_license: 'Free and open source under the MIT license.',
+    about_built: 'Made with Rust and Tauri.',
+    about_website: 'Website',
+    about_changelog: 'Changelog',
+    about_report: 'Report a problem',
+    about_idea: 'Suggest a feature',
+    about_shortcuts: 'Keyboard shortcuts',
+    sc_up: 'Go up one level',
+    sc_search: 'Search in this folder',
+    sc_rescan: 'Rescan changed folders',
+    sc_full: 'Full rescan',
+    sc_click_rescan: 'click Rescan',
+    sc_settings: 'Open settings',
+    loading: 'Loading…',
   },
   nl: {
     tagline: 'Zie wat je schijfruimte opslokt — en maak het weer vrij.',
@@ -147,11 +206,7 @@ const STRINGS = {
     update_installing: 'Installeren — 2DriveScan herstart zo meteen',
     update_failed: 'De update kon niet worden geïnstalleerd: {error}',
     update_download_manually: 'Download hem handmatig',
-    update_none: 'Je hebt de nieuwste versie ({version})',
-    update_check: 'Controleren op updates',
     update_checking: 'Controleren…',
-    update_auto_on: 'Automatisch updaten: aan',
-    update_auto_off: 'Automatisch updaten: uit',
     rescan_tip: 'Opnieuw scannen: alleen gewijzigde mappen worden opnieuw gelezen (houd Alt/Option ingedrukt voor een volledige scan)',
     just_now: 'zojuist',
     scanned_ago: 'Gescand {when}',
@@ -226,16 +281,95 @@ const STRINGS = {
     cat_other: 'Overig',
     cat_hidden: 'Verborgen ruimte',
     shortcuts: 'Tip: klik op een ring om in te zoomen, op het midden om terug te gaan, en sleep items naar de verzamelbak.',
+    settings: 'Instellingen',
+    close: 'Sluiten',
+    set_general: 'Algemeen',
+    set_updates: 'Updates',
+    set_scans: 'Scans',
+    set_about: 'Over',
+    set_appearance: 'Weergave',
+    set_theme: 'Thema',
+    opt_system: 'Systeem',
+    opt_auto: 'Automatisch',
+    opt_on: 'Aan',
+    opt_off: 'Uit',
+    theme_light: 'Licht',
+    theme_dark: 'Donker',
+    set_language: 'Taal',
+    set_units: 'Groottes',
+    set_units_hint: 'Automatisch volgt je systeem: Windows rekent 1 KB als 1024 bytes, macOS en de meeste Linux-desktops als 1000.',
+    set_chart: 'Grafiek',
+    set_color_hint: 'Hoe de grafiek gekleurd is als je een scan opent.',
+    set_rings: 'Mapniveaus',
+    set_rings_hint: 'Hoeveel ringen de grafiek tegelijk toont.',
+    set_motion: 'Animaties',
+    set_motion_hint: 'Zoomovergangen en andere beweging. Automatisch zet ze uit als je systeem om minder beweging vraagt.',
+    upd_latest: 'Je hebt de nieuwste versie',
+    upd_not_checked: 'Nog niet gecontroleerd op updates',
+    upd_checked_ago: 'Laatst gecontroleerd {when}',
+    upd_check_now: 'Nu controleren',
+    upd_check_failed: 'Controleren op updates mislukt: {error}',
+    upd_auto: 'Controleren op updates als 2DriveScan start',
+    upd_auto_hint: 'Dit is het enige wat 2DriveScan online vraagt. Er wordt nooit iets over je bestanden verstuurd.',
+    upd_signed: 'Updates zijn ondertekend. 2DriveScan weigert alles zonder geldige handtekening en installeert pas als jij op Installeren klikt.',
+    upd_after_scan: 'Je kunt de update installeren zodra de scan klaar is.',
+    upd_preview: 'Dit is de demo in je browser. De app installeert nieuwe versies met één klik.',
+    upd_download_app: '2DriveScan downloaden',
+    scans_saved: 'Bewaarde scans',
+    scans_saved_hint: 'Scans worden bewaard, zodat je ze meteen weer opent en een nieuwe scan alleen de gewijzigde mappen leest. De {keep} nieuwste scans blijven bewaard.',
+    scans_count: '{n} bewaarde scans · {size}',
+    scans_count_one: '1 bewaarde scan · {size}',
+    scans_none: 'Geen bewaarde scans',
+    scans_clear: 'Bewaarde scans verwijderen…',
+    scans_clear_confirm: 'Alle bewaarde scans verwijderen? Je eigen bestanden blijven onaangeroerd. De volgende scan van elke schijf of map leest alles opnieuw.',
+    scans_clear_ok: 'Bewaarde scans verwijderen',
+    scans_cleared: 'Bewaarde scans verwijderd — {size} vrijgemaakt',
+    scans_after_scan: 'Beschikbaar zodra de scan klaar is.',
+    fda_title: 'Volledige schijftoegang',
+    fda_hint: 'macOS beschermt sommige mappen, zoals de gegevens van Mail en Safari. Zonder toegang telt 2DriveScan die als verborgen ruimte.',
+    fda_open: 'Open Systeeminstellingen',
+    about_license: 'Gratis en open source onder de MIT-licentie.',
+    about_built: 'Gemaakt met Rust en Tauri.',
+    about_website: 'Website',
+    about_changelog: 'Wijzigingen',
+    about_report: 'Probleem melden',
+    about_idea: 'Idee voorstellen',
+    about_shortcuts: 'Sneltoetsen',
+    sc_up: 'Een niveau omhoog',
+    sc_search: 'Zoeken in deze map',
+    sc_rescan: 'Gewijzigde mappen opnieuw scannen',
+    sc_full: 'Volledig opnieuw scannen',
+    sc_click_rescan: 'klik op Opnieuw scannen',
+    sc_settings: 'Instellingen openen',
+    loading: 'Laden…',
   },
 };
 
-const current = (() => {
+/** Languages the interface is translated into, with their own names. */
+export const LANGUAGES = [
+  ['en', 'English'],
+  ['nl', 'Nederlands'],
+];
+
+function systemLanguage() {
   const pref = (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
   return pref.toLowerCase().startsWith('nl') ? 'nl' : 'en';
-})();
+}
+
+function resolve(pref) {
+  return STRINGS[pref] ? pref : systemLanguage();
+}
+
+let current = resolve(getPref('language'));
 
 export function lang() {
   return current;
+}
+
+/** Switches the language: 'system', 'en' or 'nl'. Callers re-render. */
+export function setLanguage(pref) {
+  current = resolve(pref);
+  document.documentElement.lang = current;
 }
 
 export function t(key, vars = {}) {

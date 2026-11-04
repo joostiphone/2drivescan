@@ -50,6 +50,7 @@ export class Sunburst {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.rings = opts.rings ?? 5;
+    this.animate = opts.animate ?? true;
     this.cb = opts;
     this.mode = 'folder';
     this.view = null;
@@ -88,6 +89,11 @@ export class Sunburst {
   setTheme(theme) {
     this.theme = { ...this.theme, ...theme };
     this.render();
+  }
+
+  /** Turns the zoom and appear animations on or off. */
+  setAnimate(on) {
+    this.animate = !!on;
   }
 
   setMode(mode) {
@@ -139,26 +145,28 @@ export class Sunburst {
     const next = layout(root);
     const prev = this.view;
     const now = performance.now();
+    // Without animations every transition finishes on the next frame.
+    const dur = (ms) => (this.animate ? ms : 1);
     this.transition = null;
     if (prev && mode === 'in') {
       const a = prev.arcs.find((x) => x.depth > 0 && x.node.id === anchorId);
       if (a) {
         const skip = new Set(prev.arcs.filter((x) => isWithin(x, a)));
-        this.transition = { type: 'in', prev, next, a, skip, t0: now, dur: 620 };
+        this.transition = { type: 'in', prev, next, a, skip, t0: now, dur: dur(620) };
       }
     } else if (prev && mode === 'out') {
       const b = next.arcs.find((x) => x.depth > 0 && x.node.id === anchorId);
       if (b) {
         const skip = new Set(next.arcs.filter((x) => isWithin(x, b)));
-        this.transition = { type: 'out', prev, next, b, skip, t0: now, dur: 620 };
+        this.transition = { type: 'out', prev, next, b, skip, t0: now, dur: dur(620) };
       }
     }
     if (!this.transition) {
-      this.transition = { type: mode === 'sweep' ? 'sweep' : 'pop', next, t0: now, dur: mode === 'sweep' ? 1100 : 420 };
+      this.transition = { type: mode === 'sweep' ? 'sweep' : 'pop', next, t0: now, dur: dur(mode === 'sweep' ? 1100 : 420) };
     }
     this.view = next;
     this.hover = null;
-    this.labelAlpha = 0;
+    this.labelAlpha = this.animate ? 0 : 1;
     this.render();
   }
 

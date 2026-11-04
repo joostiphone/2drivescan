@@ -2,6 +2,22 @@
 
 Alle belangrijke wijzigingen in 2DriveScan. De Engelse versie staat in `CHANGELOG.md`.
 
+## 0.4.0 – 2026-11-04
+
+- **Instellingen.** Een nieuw instellingenvenster (het tandwiel in de titelbalk, of Ctrl/⌘ + ,) met:
+  - **Updates:** zie welke versie je hebt, controleer op een nieuwe, installeer die met één klik en zet het
+    controleren bij het opstarten aan of uit.
+  - **Thema** (systeem, licht, donker) en **taal** (systeem, English, Nederlands), direct toegepast.
+  - **Groottes** in eenheden van 1000 of 1024, of automatisch zoals je systeem.
+  - **Grafiek:** kleuren per map of per bestandstype (wordt onthouden), 4 tot 7 mapniveaus, en animaties aan
+    of uit.
+  - **Bewaarde scans:** zie hoeveel ruimte ze innemen en verwijder ze.
+  - **Over:** links naar de website, GitHub, de wijzigingen en de formulieren voor problemen en ideeën, en de
+    sneltoetsen.
+- Het tandwiel krijgt een stip als er een nieuwe versie is.
+- Opgelost: primaire knoppen verloren hun kleur als je erover bewoog, waardoor de tekst in licht thema
+  slecht leesbaar was.
+
 ## 0.3.0 – 2026-11-04
 
 - **Automatische updates.** 2DriveScan kijkt bij het opstarten of er een nieuwe versie is en installeert die met

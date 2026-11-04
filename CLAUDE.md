@@ -13,9 +13,12 @@ The owner communicates in Dutch; the app UI and repo docs are English (UI also h
 - `ui/js/main.js` – app controller; `sunburst.js` – canvas chart with camera-based zoom animation;
   `mock.js` – demo backend used when `window.__TAURI__` is missing (browser preview / website demo);
   `i18n.js` – en + nl strings. Keep both languages in sync when adding strings.
+  `settings.js` – settings dialog; `prefs.js` – preferences in localStorage (a new setting goes in `PREFS`,
+  the dialog, and `applyPref` in main.js).
 
 ## Conventions
-- Never delete files permanently: removal always goes through the OS Trash (`trash` crate).
+- Never delete the user's files permanently: removal always goes through the OS Trash (`trash` crate). The only
+  files deleted directly are 2DriveScan's own saved scans (pruning beyond 12, "Remove saved scans" in Settings).
 - New Tauri commands must be registered in `generate_handler!` and mirrored in `ui/js/mock.js`.
 - Before pushing: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
 - Commits are authored by the owner, with Claude as co-author. In a fresh checkout first run

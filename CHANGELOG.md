@@ -3,6 +3,21 @@
 All notable changes to 2DriveScan. The website shows this file on its changelog page;
 the Dutch version lives in `CHANGELOG.nl.md`.
 
+## 0.4.0 – 2026-11-04
+
+- **Settings.** A new settings window (the gear in the title bar, or Ctrl/⌘ + ,) with:
+  - **Updates:** see which version you have, check for a new one, install it with one click, and switch the
+    check at startup on or off.
+  - **Theme** (system, light, dark) and **language** (system, English, Nederlands), applied right away.
+  - **Sizes** in 1000- or 1024-based units, or automatic like your system.
+  - **Chart:** color by folders or file types (remembered), 4 to 7 folder levels, and animations on or off.
+  - **Saved scans:** see how much space they take and remove them.
+  - **About:** links to the website, GitHub, the changelog and the bug and feature forms, and the keyboard
+    shortcuts.
+- The gear shows a dot when a new version is available.
+- Fixed: primary buttons lost their color when you hovered over them, which made the text hard to read in
+  light mode.
+
 ## 0.3.0 – 2026-11-04
 
 - **Automatic updates.** 2DriveScan checks for a new version when it starts and installs it with one click
