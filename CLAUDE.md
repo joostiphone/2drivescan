@@ -18,6 +18,10 @@ The owner communicates in Dutch; the app UI and repo docs are English (UI also h
 - Never delete files permanently: removal always goes through the OS Trash (`trash` crate).
 - New Tauri commands must be registered in `generate_handler!` and mirrored in `ui/js/mock.js`.
 - Before pushing: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
+- Commits are authored by the owner, with Claude as co-author. In a fresh checkout first run
+  `git config user.name "joostiphone"` and `git config user.email "16277235+joostiphone@users.noreply.github.com"`
+  (GitHub's no-reply address, so no private email ends up in the public history), and end each message with a
+  `Co-Authored-By: Claude …` line.
 - UI check without a desktop: `npm run preview`, then screenshot with Playwright.
 
 ## Website (`website/`, 2drivescan.app)
