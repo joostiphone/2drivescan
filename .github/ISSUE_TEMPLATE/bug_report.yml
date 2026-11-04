@@ -1,0 +1,73 @@
+name: Bug report
+description: Something does not work, looks wrong or crashes.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this! The more of the fields below you fill in, the faster it can be fixed.
+        Screenshots can show folder and file names; feel free to blur anything private.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Describe the problem. If something is shown wrong, what did you expect to see?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you do right before it happened?
+      placeholder: |
+        1. Scan "Macintosh HD"
+        2. Click the Users ring
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: 2DriveScan version
+      description: Shown at the bottom of the start screen.
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version, and the distribution on Linux
+      placeholder: "macOS 15.4 on Apple Silicon / Windows 11 x64 / Ubuntu 24.04"
+    validations:
+      required: true
+  - type: dropdown
+    id: installer
+    attributes:
+      label: How did you install it?
+      options:
+        - ".dmg (macOS)"
+        - "-setup.exe (Windows)"
+        - ".msi (Windows)"
+        - ".deb"
+        - ".rpm"
+        - ".AppImage"
+        - Built from source
+  - type: textarea
+    id: scan
+    attributes:
+      label: What were you scanning?
+      description: For example a whole drive or one folder, internal or external, roughly how many files, network or cloud folders.
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or screen recording
+      description: Drag images or a video into this box.

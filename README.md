@@ -11,7 +11,8 @@
 
 <p align="center">
   <a href="https://github.com/joostiphone/2drivescan/releases/latest"><b>Download</b></a> ·
-  <a href="https://2drivescan.app">2drivescan.app</a>
+  <a href="https://2drivescan.app">2drivescan.app</a> ·
+  <a href="https://github.com/joostiphone/2drivescan/issues/new/choose">Feedback</a>
 </p>
 
 ![2DriveScan exploring a disk](docs/screenshots/result-dark.png)
@@ -108,6 +109,11 @@ Update packages are signed with the updater key (repository secrets `TAURI_SIGNI
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`); its public half is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`.
 The app reads `latest.json` from the newest GitHub release. Never replace the key: installed copies only accept
 updates signed with it.
+
+## Feedback
+
+Found a bug or have an idea? [Open an issue](https://github.com/joostiphone/2drivescan/issues/new/choose): there is a
+short form for bug reports and one for feature requests. Pull requests are welcome too.
 
 ## License
 

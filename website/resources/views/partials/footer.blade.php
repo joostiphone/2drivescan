@@ -19,7 +19,7 @@
             <h3>{{ __('site.footer.project') }}</h3>
             <a href="{{ $repoUrl }}" rel="noopener">{{ __('site.footer.source') }}</a>
             <a href="{{ $repoUrl }}/releases" rel="noopener">{{ __('site.footer.releases') }}</a>
-            <a href="{{ $repoUrl }}/issues" rel="noopener">{{ __('site.footer.issues') }}</a>
+            <a href="{{ $repoUrl }}/issues/new/choose" rel="noopener">{{ __('site.footer.issues') }}</a>
             <a href="{{ $repoUrl }}/blob/main/LICENSE" rel="noopener">{{ __('site.footer.license') }}</a>
         </div>
         <div>

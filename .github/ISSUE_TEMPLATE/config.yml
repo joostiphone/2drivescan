@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and answers
+    url: https://2drivescan.app/#faq
+    about: Common questions, such as Full Disk Access and what "Hidden space" means.
+  - name: Try the live demo
+    url: https://2drivescan.app
+    about: The real interface with sample data, right in your browser.
