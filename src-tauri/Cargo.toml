@@ -1,6 +1,6 @@
 [package]
 name = "twodrivescan"
-version = "0.2.1"
+version = "0.3.0"
 description = "2DriveScan – see what is taking up your disk space"
 authors = ["2DriveScan contributors"]
 license = "MIT"

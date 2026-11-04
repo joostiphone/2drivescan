@@ -3,6 +3,16 @@
 All notable changes to 2DriveScan. The website shows this file on its changelog page;
 the Dutch version lives in `CHANGELOG.nl.md`.
 
+## 0.3.0 – 2026-11-04
+
+- **Automatic updates.** 2DriveScan checks for a new version when it starts and installs it with one click
+  ("Install and restart"), with a progress bar. Updates are signed; anything without a valid signature is
+  refused. Works for every installer: macOS, Windows (setup.exe and .msi) and Linux (.deb, .rpm, AppImage).
+- The start screen has **Check for updates** and a switch to turn the automatic check off.
+- No updates are installed while a scan is running.
+
+This version has to be installed by hand once; after that, 2DriveScan updates itself.
+
 ## 0.2.1 – 2026-11-03
 
 - Fixed: a finished scan was saved as "unfinished" when some folders could not be read (normal on macOS

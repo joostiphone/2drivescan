@@ -75,7 +75,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "PUBKEY_PLACEHOLDER",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc4RENBODYzQ0IyMDlDMDYKUldRR25DRExZNmpjZUg0ZTd2NHRwMTRCRUh1Njh2OEFML1VMUE5wWjA3TkdIaWxqSnBwUGRTSUcK",
       "endpoints": [
         "https://github.com/joostiphone/2drivescan/releases/latest/download/latest.json"
       ],

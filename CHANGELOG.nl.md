@@ -2,6 +2,17 @@
 
 Alle belangrijke wijzigingen in 2DriveScan. De Engelse versie staat in `CHANGELOG.md`.
 
+## 0.3.0 – 2026-11-04
+
+- **Automatische updates.** 2DriveScan kijkt bij het opstarten of er een nieuwe versie is en installeert die met
+  één klik ("Installeren en herstarten"), met een voortgangsbalk. Updates zijn ondertekend; alles zonder
+  geldige handtekening wordt geweigerd. Werkt voor alle installers: macOS, Windows (setup.exe en .msi) en
+  Linux (.deb, .rpm, AppImage).
+- Het startscherm heeft **Controleren op updates** en een schakelaar om het automatisch controleren uit te zetten.
+- Tijdens een scan worden geen updates geïnstalleerd.
+
+Deze versie moet je één keer zelf installeren; daarna werkt 2DriveScan zichzelf bij.
+
 ## 0.2.1 – 2026-11-03
 
 - Opgelost: een afgemaakte scan werd als "onafgemaakt" bewaard als sommige mappen niet gelezen konden worden

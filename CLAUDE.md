@@ -41,3 +41,7 @@ The owner communicates in Dutch; the app UI and repo docs are English (UI also h
    Windows (x64 msi/nsis, arm64 nsis), Linux (x64 + arm64 deb/rpm/AppImage) and publishes the release.
 3. Add the release to `CHANGELOG.md` and `CHANGELOG.nl.md` before tagging; the website picks up the new
    installers automatically.
+4. Auto-update: releases are signed with the owner's updater key (secrets `TAURI_SIGNING_PRIVATE_KEY*`,
+   public key in `tauri.conf.json`); tauri-action uploads `latest.json`, which installed apps read from
+   `releases/latest/download/latest.json`. Check the macOS job log says "Update packages will be signed".
+   Never change the public key: existing installs would stop accepting updates.

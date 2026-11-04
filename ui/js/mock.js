@@ -353,7 +353,7 @@ export function createMock() {
   ];
 
   const handlers = {
-    app_info: () => ({ version: '0.2.1', os: 'macos', arch: 'aarch64', home: '/Users/joost', preview: true }),
+    app_info: () => ({ version: '0.3.0', os: 'macos', arch: 'aarch64', home: '/Users/joost', preview: true }),
     list_volumes: () => VOLUMES,
     pick_folder: () => '/Users/joost/Developer',
     saved_scans: () =>

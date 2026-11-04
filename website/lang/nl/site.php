@@ -54,7 +54,7 @@ return [
             'saved' => ['Scans worden bewaard', 'Open je laatste scan meteen opnieuw. Een nieuwe scan leest alleen de mappen die veranderd zijn, en een onderbroken scan gaat verder waar hij gebleven was.'],
             'collector' => ['Veilig opruimen', 'Sleep items naar de verzamelbak, controleer ze en verplaats ze in één keer naar de prullenmand. Er wordt nooit iets definitief verwijderd.'],
             'native' => ['Thuis op elk platform', 'macOS op Apple Silicon en Intel, Windows op x64 en ARM, en alle grote Linux-distributies. In licht en donker.'],
-            'private' => ['Privacy vanaf de basis', 'Je bestanden verlaten nooit je computer. Geen account, geen telemetrie, geen internetverbinding nodig.'],
+            'private' => ['Privacy vanaf de basis', 'Je bestanden verlaten nooit je computer. Geen account, geen telemetrie; het enige wat de app online vraagt, is of er een nieuwe versie is.'],
         ],
     ],
 
@@ -117,7 +117,8 @@ return [
             ['Waarom vraagt macOS om volledige schijftoegang?', 'macOS beschermt sommige mappen, zoals de gegevens van Mail en Safari. Zonder toegang telt 2DriveScan die als verborgen ruimte. Geef volledige schijftoegang in Systeeminstellingen → Privacy en beveiliging voor het volledige beeld.'],
             ['Moet ik elke keer op een volledige scan wachten?', 'Nee. Elke scan wordt bewaard, zodat je hem meteen weer kunt openen. Een nieuwe scan leest alleen mappen die sinds de vorige keer veranderd zijn; dat duurt meestal seconden. Stop je een scan of sluit je de app, dan gaat de volgende scan verder waar hij gebleven was.'],
             ['Wat is “verborgen ruimte”?', 'Ruimte die op een schijf in gebruik is, maar niet bij een zichtbaar bestand hoort: lokale snapshots, swap, systeembestanden en mappen die je niet mag lezen.'],
-            ['Stuurt 2DriveScan gegevens door?', 'Nee. Scans gebeuren volledig op je eigen computer en de app heeft geen internetverbinding nodig.'],
+            ['Stuurt 2DriveScan gegevens door?', 'Nee. Scans gebeuren volledig op je eigen computer en er wordt niets over je bestanden verstuurd. Het enige online verzoek is een controle op GitHub of er een nieuwe versie is, bij het opstarten; die kun je onderaan het startscherm uitzetten.'],
+            ['Hoe werken updates?', 'Vanaf versie 0.3.0 laat 2DriveScan weten wanneer er een nieuwe versie is, installeert die met één klik en herstart. Elke update is ondertekend, en de app weigert alles zonder geldige handtekening.'],
             ['Welke Linux-distributies worden ondersteund?', 'Elke recente distributie. Gebruik de .deb op Debian- en Ubuntu-systemen, de .rpm op Fedora en openSUSE, en de AppImage overal anders, ook op Arch.'],
         ],
     ],

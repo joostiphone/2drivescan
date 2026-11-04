@@ -34,6 +34,7 @@
   Trash or Recycle Bin in one go. Nothing is ever deleted permanently, so you can always restore items.
 - **Native everywhere.** Light and dark mode, English and Dutch, reveal in Finder, Explorer or your file
   manager, and keyboard shortcuts.
+- **Automatic updates.** One click installs a new version; updates are signed and verified.
 
 ![Light mode with file type colors](docs/screenshots/types-light.png)
 
@@ -102,6 +103,11 @@ cargo run --release -p scan-core --example bench -- ~/Downloads
    to a new GitHub release and publishes it when every platform succeeds.
 
 Code signing is optional. To sign and notarize the macOS app, follow [docs/macos-signing.md](docs/macos-signing.md).
+
+Update packages are signed with the updater key (repository secrets `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`); its public half is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`.
+The app reads `latest.json` from the newest GitHub release. Never replace the key: installed copies only accept
+updates signed with it.
 
 ## License
 
