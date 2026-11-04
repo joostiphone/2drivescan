@@ -182,6 +182,9 @@ jobs:
           args: ${{ matrix.args }} ${{ env.UPDATER_ARGS }}
           # Windows users install the setup.exe; update them with the same installer.
           updaterJsonPreferNsis: true
+          # All builds update the same latest.json; when two finish at the same
+          # moment one upload fails with "Not Found". Retrying fixes that.
+          retryAttempts: 3
 
   publish-release:
     name: Publish release
