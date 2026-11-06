@@ -21,6 +21,9 @@
             <a href="{{ $repoUrl }}/releases" rel="noopener">{{ __('site.footer.releases') }}</a>
             <a href="{{ $repoUrl }}/issues/new/choose" rel="noopener">{{ __('site.footer.issues') }}</a>
             <a href="{{ $repoUrl }}/blob/main/LICENSE" rel="noopener">{{ __('site.footer.license') }}</a>
+            @if (config('site.donate_url'))
+                <a href="{{ lroute('home') }}#donate">{{ __('site.nav.donate') }}</a>
+            @endif
         </div>
         <div>
             <h3>{{ __('site.nav.language') }}</h3>

@@ -1,6 +1,7 @@
 @php
     $locale = app()->getLocale();
     $page = current_page();
+    $donateUrl = config('site.donate_url');
 @endphp
 <header class="nav" data-nav>
     <div class="nav-inner">
@@ -29,6 +30,12 @@
                        @class(['active' => $code === $locale]) @if ($code === $locale) aria-current="true" @endif>{{ strtoupper($code) }}</a>
                 @endforeach
             </div>
+            @if ($donateUrl)
+                <a class="btn btn-ghost btn-sm nav-donate" href="{{ lroute('home') }}#donate" title="{{ __('site.nav.donate') }}">
+                    @include('partials.icon', ['name' => 'heart'])
+                    <span>{{ __('site.nav.donate') }}</span>
+                </a>
+            @endif
             <a class="btn btn-primary btn-sm" href="{{ lroute('download') }}">
                 @include('partials.icon', ['name' => 'download'])
                 {{ __('site.nav.download') }}

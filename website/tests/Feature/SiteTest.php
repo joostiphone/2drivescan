@@ -108,4 +108,38 @@ class SiteTest extends TestCase
             ->assertHeader('Content-Type', 'application/xml')
             ->assertSee(url('/nl/download'), false);
     }
+
+    public function test_donate_section_is_a_plain_paypal_link_in_both_languages(): void
+    {
+        $this->fakeRelease();
+        $paypal = 'https://www.paypal.com/donate/?hosted_button_id=SN6ACMPSATP3J';
+
+        foreach (['/' => ['Donate with PayPal', url('/')], '/nl' => ['Doneren via PayPal', url('/nl')]] as $page => [$button, $home]) {
+            $html = $this->get($page)->assertOk()
+                ->assertSee('id="donate"', false)
+                ->assertSee($button)
+                ->getContent();
+
+            // The button is an ordinary link that opens PayPal's own page.
+            $this->assertMatchesRegularExpression('#<a [^>]*href="'.preg_quote($paypal, '#').'"[^>]*rel="noopener"#', $html);
+            // Header and footer both point at the section.
+            $this->assertSame(2, substr_count($html, 'href="'.$home.'#donate"'));
+            // Nothing is loaded from PayPal.
+            $this->assertDoesNotMatchRegularExpression('#<(script|iframe|img|link)[^>]+paypal#i', $html);
+        }
+
+        // Other pages link to the section on the home page.
+        $this->get('/download')->assertOk()->assertSee('href="'.url('/').'#donate"', false);
+    }
+
+    public function test_donate_can_be_switched_off(): void
+    {
+        config(['site.donate_url' => '']);
+        $this->fakeRelease();
+
+        $this->get('/')->assertOk()
+            ->assertDontSee('id="donate"', false)
+            ->assertDontSee('#donate', false)
+            ->assertDontSee('paypal.com', false);
+    }
 }

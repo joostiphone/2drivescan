@@ -932,6 +932,83 @@ p {
   color: var(--text-2);
 }
 
+/* ---------------------------------------------------------------- donate */
+
+.nav-donate .icon,
+.donate .btn .icon {
+  color: var(--pink);
+}
+
+.donate .btn-primary .icon {
+  color: #fff;
+}
+
+.donate {
+  text-align: center;
+  padding: 44px 32px 36px;
+  border-radius: 24px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 79, 163, 0.1), transparent 60%),
+    var(--panel);
+  border: 1px solid var(--border);
+}
+
+.donate .eyebrow {
+  margin-bottom: 18px;
+}
+
+.donate h2 {
+  font-size: clamp(26px, 3.4vw, 36px);
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.donate p {
+  max-width: 600px;
+  margin: 14px auto 26px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.donate .donate-note {
+  margin: 16px auto 0;
+  font-size: 13.5px;
+  color: var(--text-3);
+}
+
+/* Between the phone menu and a wide header there is little room: heart only. */
+@media (min-width: 901px) and (max-width: 1120px) {
+  .nav-donate {
+    padding: 0 10px;
+  }
+  .nav-donate span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* Phone menu: a little air between the Donate and Download buttons. */
+@media (max-width: 900px) {
+  .nav-donate {
+    margin-top: 6px;
+    margin-bottom: 4px;
+  }
+}
+
+@media (max-width: 640px) {
+  .donate {
+    padding: 34px 20px 28px;
+  }
+  .donate .btn {
+    width: 100%;
+  }
+}
+
 /* ---------------------------------------------------------------- closing */
 
 .closing {

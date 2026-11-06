@@ -140,6 +140,24 @@
         </div>
     </section>
 
+    {{-- Donate: a plain link to PayPal, nothing loaded from PayPal ------- --}}
+    @if ($donateUrl = config('site.donate_url'))
+        <section class="section section-tight" id="donate">
+            <div class="container narrow">
+                <div class="donate reveal">
+                    <span class="eyebrow">{{ __('site.donate.eyebrow') }}</span>
+                    <h2>{{ __('site.donate.title') }}</h2>
+                    <p>{{ __('site.donate.text') }}</p>
+                    <a class="btn btn-primary btn-lg" href="{{ $donateUrl }}" rel="noopener">
+                        @include('partials.icon', ['name' => 'heart'])
+                        {{ __('site.donate.button') }}
+                    </a>
+                    <p class="donate-note">{{ __('site.donate.note') }}</p>
+                </div>
+            </div>
+        </section>
+    @endif
+
     {{-- Closing CTA ------------------------------------------------------ --}}
     <section class="section closing">
         <div class="container closing-inner">

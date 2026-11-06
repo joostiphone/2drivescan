@@ -50,9 +50,12 @@ class ProxyTest extends TestCase
 
     public function test_pages_set_no_cookies(): void
     {
-        $response = $this->get('/');
+        // Includes the donate section: it links to PayPal and loads nothing from it.
+        foreach (['/', '/nl'] as $page) {
+            $response = $this->get($page);
 
-        $response->assertOk();
-        $this->assertSame([], $response->headers->getCookies());
+            $response->assertOk();
+            $this->assertSame([], $response->headers->getCookies(), $page);
+        }
     }
 }

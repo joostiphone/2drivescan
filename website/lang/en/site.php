@@ -11,6 +11,7 @@ return [
         'download' => 'Download',
         'changelog' => 'Changelog',
         'github' => 'GitHub',
+        'donate' => 'Donate',
         'menu' => 'Menu',
         'language' => 'Language',
     ],
@@ -121,6 +122,14 @@ return [
             ['How do updates work?', 'From version 0.3.0, 2DriveScan tells you when a new version is available and installs it with one click, then restarts. You can also check yourself under Settings → Updates. Every update is signed, and the app refuses anything without a valid signature.'],
             ['Which Linux distributions are supported?', 'Any recent one. Use the .deb on Debian and Ubuntu based systems, the .rpm on Fedora and openSUSE, and the AppImage everywhere else, including Arch.'],
         ],
+    ],
+
+    'donate' => [
+        'eyebrow' => 'Support 2DriveScan',
+        'title' => 'Help cover the costs.',
+        'text' => '2DriveScan is free and has no paid features. Making it available does cost money: the domain and the hosting of this website. A donation helps cover those costs. It is entirely voluntary and doesn\'t unlock anything.',
+        'button' => 'Donate with PayPal',
+        'note' => 'You donate on PayPal\'s own website. This site loads nothing from PayPal and sets no cookies.',
     ],
 
     'changelog' => [

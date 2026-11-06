@@ -11,6 +11,7 @@ return [
         'download' => 'Downloaden',
         'changelog' => 'Wijzigingen',
         'github' => 'GitHub',
+        'donate' => 'Doneren',
         'menu' => 'Menu',
         'language' => 'Taal',
     ],
@@ -121,6 +122,14 @@ return [
             ['Hoe werken updates?', 'Vanaf versie 0.3.0 laat 2DriveScan weten wanneer er een nieuwe versie is, installeert die met één klik en herstart. Je kunt ook zelf controleren via Instellingen → Updates. Elke update is ondertekend, en de app weigert alles zonder geldige handtekening.'],
             ['Welke Linux-distributies worden ondersteund?', 'Elke recente distributie. Gebruik de .deb op Debian- en Ubuntu-systemen, de .rpm op Fedora en openSUSE, en de AppImage overal anders, ook op Arch.'],
         ],
+    ],
+
+    'donate' => [
+        'eyebrow' => 'Steun 2DriveScan',
+        'title' => 'Help de kosten te dekken.',
+        'text' => '2DriveScan is gratis en heeft geen betaalde functies. Het beschikbaar maken kost wel geld: de domeinnaam en de hosting van deze website. Een donatie helpt die kosten te dekken. Doneren is helemaal vrijwillig en ontgrendelt niets.',
+        'button' => 'Doneren via PayPal',
+        'note' => 'Je doneert op de website van PayPal zelf. Deze site laadt niets van PayPal en zet geen cookies.',
     ],
 
     'changelog' => [
