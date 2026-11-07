@@ -112,9 +112,9 @@
                         <thead>
                             <tr>
                                 <th scope="col">{{ __('site.stats.version') }}</th>
-                                <th scope="col">{{ __('site.stats.released') }}</th>
+                                <th scope="col" class="col-date">{{ __('site.stats.released') }}</th>
                                 @foreach (\App\Services\DownloadStats::OSES as $os)
-                                    <th scope="col" class="num">{{ __('site.os.'.$os) }}</th>
+                                    <th scope="col" class="num col-os">{{ __('site.os.'.$os) }}</th>
                                 @endforeach
                                 <th scope="col" class="num">{{ __('site.stats.total') }}</th>
                             </tr>
@@ -126,9 +126,9 @@
                                         <a href="{{ lroute('changelog') }}#v{{ $v['version'] }}">v{{ $v['version'] }}</a>
                                         @if ($loop->first)<em class="badge">{{ __('site.changelog.latest') }}</em>@endif
                                     </th>
-                                    <td>@if ($v['published_at'])<time datetime="{{ $v['published_at']->toDateString() }}">{{ $date($v['published_at'], 'D MMM YYYY') }}</time>@endif</td>
+                                    <td class="col-date">@if ($v['published_at'])<time datetime="{{ $v['published_at']->toDateString() }}">{{ $date($v['published_at'], 'D MMM YYYY') }}</time>@endif</td>
                                     @foreach ($v['os'] as $os => $n)
-                                        <td class="num">{{ nf($n) }}</td>
+                                        <td class="num col-os">{{ nf($n) }}</td>
                                     @endforeach
                                     <td class="num">
                                         <b>{{ nf($v['total']) }}</b>

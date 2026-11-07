@@ -1194,6 +1194,23 @@ p {
   background: var(--c);
 }
 
+/* Narrow screens keep the total in view: first the date goes, then the
+   per-platform numbers (the coloured bar under the total still shows the split). */
+@media (max-width: 760px) {
+  .stat-table .col-date {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .stat-table .col-os {
+    display: none;
+  }
+  .stack {
+    width: 84px;
+  }
+}
+
 .variant-card {
   padding: 20px 22px;
   border-radius: var(--radius);
