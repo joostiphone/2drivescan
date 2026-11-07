@@ -158,6 +158,14 @@
         </section>
     @endif
 
+    {{-- More from the maker ---------------------------------------------- --}}
+    <section class="section section-tight" id="more">
+        <div class="container narrow">
+            <h2 class="more-title">{{ __('site.more.title') }}</h2>
+            @include('partials.maker-card')
+        </div>
+    </section>
+
     {{-- Closing CTA ------------------------------------------------------ --}}
     <section class="section closing">
         <div class="container closing-inner">

@@ -157,6 +157,19 @@ return [
         'link' => 'Statistieken',
     ],
 
+    'more' => [
+        'title' => 'Ook van de maker',
+        'name' => '2Secret',
+        'pitch' => 'De gratis, opensource wachtwoordmanager die je kunt controleren.',
+        'text' => 'Volledig versleuteld met twee geheimen. Geen abonnement, geen tracking, geen kluizen bij ons.',
+        'platforms' => 'macOS, Windows, Linux, BSD, iOS, Android en het web',
+        'button' => 'Bekijk 2secret.app',
+        'url' => 'https://2secret.app/nl',
+        'footer' => 'Ook van de maker:',
+        'footer_what' => 'een wachtwoordmanager',
+        'download_line' => 'Ook van de maker: 2Secret, de gratis, opensource wachtwoordmanager die je kunt controleren.',
+    ],
+
     'changelog' => [
         'title' => 'Wijzigingen',
         'lead' => 'Wat er in elke versie van 2DriveScan veranderd is.',

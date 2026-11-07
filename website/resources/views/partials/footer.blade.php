@@ -7,6 +7,7 @@
             </a>
             <p>{{ __('site.footer.tagline') }}</p>
             <p class="muted">{{ __('site.footer.made') }}</p>
+            <p class="muted">{{ __('site.more.footer') }} <a href="{{ __('site.more.url') }}" rel="noopener">{{ __('site.more.name') }}</a>, {{ __('site.more.footer_what') }}.</p>
         </div>
         <div>
             <h3>{{ __('site.footer.product') }}</h3>

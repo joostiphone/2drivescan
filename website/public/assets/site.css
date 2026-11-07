@@ -1306,6 +1306,127 @@ p {
   }
 }
 
+/* ---------------------------------------------------------------- more from the maker */
+
+.more-title {
+  margin-bottom: 18px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.maker-card {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: 22px;
+  align-items: center;
+  padding: 24px 26px;
+  border-radius: 24px;
+  background:
+    radial-gradient(80% 120% at 0% 0%, rgba(8, 223, 232, 0.08), transparent 60%),
+    var(--panel);
+  border: 1px solid var(--border);
+}
+
+.maker-card img {
+  display: block;
+  border-radius: 14px;
+}
+
+.maker-text h3 {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.maker-pitch {
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.maker-desc {
+  margin-top: 6px;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+.maker-platforms {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: var(--text-3);
+}
+
+.maker-platforms .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.maker-card .btn .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.maker-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+  text-align: center;
+  font-size: 14.5px;
+  color: var(--text-2);
+}
+
+.maker-line img {
+  border-radius: 7px;
+}
+
+.maker-line a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.maker-line a:hover {
+  text-decoration: underline;
+}
+
+.maker-line a .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.footer-brand p a {
+  color: var(--text-2);
+}
+
+@media (max-width: 640px) {
+  .maker-card {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 16px;
+    padding: 22px 20px;
+    align-items: start;
+  }
+  .maker-card img {
+    width: 52px;
+    height: 52px;
+  }
+  .maker-card .btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
 /* ---------------------------------------------------------------- donate */
 
 .nav-donate .icon,

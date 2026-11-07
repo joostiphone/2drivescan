@@ -157,6 +157,19 @@ return [
         'link' => 'Statistics',
     ],
 
+    'more' => [
+        'title' => 'More from the maker',
+        'name' => '2Secret',
+        'pitch' => 'The free, open-source password manager you can check.',
+        'text' => 'End-to-end encrypted with two secrets. No subscription, no tracking, no vaults in our hands.',
+        'platforms' => 'macOS, Windows, Linux, BSD, iOS, Android and the web',
+        'button' => 'Visit 2secret.app',
+        'url' => 'https://2secret.app',
+        'footer' => 'Also by the maker:',
+        'footer_what' => 'a password manager',
+        'download_line' => 'Also by the maker: 2Secret, the free, open-source password manager you can check.',
+    ],
+
     'changelog' => [
         'title' => 'Changelog',
         'lead' => 'What changed in each version of 2DriveScan.',

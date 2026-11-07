@@ -132,6 +132,33 @@ class SiteTest extends TestCase
         $this->get('/download')->assertOk()->assertSee('href="'.url('/').'#donate"', false);
     }
 
+    public function test_links_to_2secret_from_home_footer_and_download_page(): void
+    {
+        $this->fakeRelease();
+        $this->assertFileExists(public_path('img/2secret.png'));
+
+        foreach (['/' => 'https://2secret.app', '/nl' => 'https://2secret.app/nl', '/download' => 'https://2secret.app', '/nl/download' => 'https://2secret.app/nl'] as $page => $url) {
+            $html = $this->get($page)->assertOk()->getContent();
+
+            // A plain link with rel="noopener" (home: card + footer, download: line + footer).
+            $this->assertSame(2, preg_match_all('#<a [^>]*href="'.preg_quote($url, '#').'" rel="noopener">#', $html), $page);
+            // The icon comes from this site; images are never loaded from elsewhere.
+            $this->assertStringContainsString('src="'.url('/img/2secret.png').'"', $html);
+            preg_match_all('#<img[^>]+src="([^"]+)"#', $html, $m);
+            foreach ($m[1] as $src) {
+                $this->assertStringStartsWith(url('/'), $src, $page);
+            }
+            $this->assertStringNotContainsString('utm_', $html);
+            // 2Secret is described on its own merits; no other password managers are named.
+            foreach (['1Password', 'Bitwarden', 'LastPass', 'Dashlane', 'KeePass', 'Proton Pass'] as $name) {
+                $this->assertStringNotContainsStringIgnoringCase($name, $html, $page);
+            }
+        }
+
+        $this->get('/')->assertSee('More from the maker')->assertSee('Visit 2secret.app');
+        $this->get('/nl')->assertSee('Ook van de maker')->assertSee('Bekijk 2secret.app');
+    }
+
     public function test_donate_can_be_switched_off(): void
     {
         config(['site.donate_url' => '']);

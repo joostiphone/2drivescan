@@ -99,6 +99,12 @@ chmod +x {{ $assets['appimage']['name'] ?? '2DriveScan_'.$release['version'].'_a
                 </header>
                 <a class="btn btn-ghost" href="{{ $repoUrl }}#development" rel="noopener">@include('partials.icon', ['name' => 'github']) GitHub</a>
             </article>
+
+            <p class="maker-line reveal">
+                <img src="{{ asset('img/2secret.png') }}" alt="" width="28" height="28" loading="lazy">
+                <span>{{ __('site.more.download_line') }}</span>
+                <a href="{{ __('site.more.url') }}" rel="noopener">{{ __('site.more.button') }} @include('partials.icon', ['name' => 'arrow'])</a>
+            </p>
         </div>
     </section>
 @endsection
