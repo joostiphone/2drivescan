@@ -24,6 +24,10 @@ return [
     // cookies). Leave DONATE_URL empty to hide the donate button and section.
     'donate_url' => env('DONATE_URL', 'https://www.paypal.com/donate/?hosted_button_id=SN6ACMPSATP3J'),
 
+    // Daily download counts for the chart on /stats (written by downloads:snapshot).
+    // Empty: storage/app/downloads/history.json, which is shared between releases.
+    'stats_history' => env('STATS_HISTORY_PATH'),
+
     // Path to the repository checkout that contains CHANGELOG.md, ui/ and docs/.
     'repo_path' => env('SITE_REPO_PATH', dirname(base_path())),
 ];

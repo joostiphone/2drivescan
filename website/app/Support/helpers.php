@@ -37,3 +37,13 @@ if (! function_exists('human_bytes')) {
         return number_format($value, $i === 0 ? 0 : 1, app()->getLocale() === 'nl' ? ',' : '.', '').' '.$units[$i];
     }
 }
+
+if (! function_exists('nf')) {
+    /** A whole number with the thousands separator of the current language (1,234 or 1.234). */
+    function nf(int|float $n): string
+    {
+        return app()->getLocale() === 'nl'
+            ? number_format($n, 0, ',', '.')
+            : number_format($n);
+    }
+}

@@ -5,6 +5,20 @@
     $description = trim($__env->yieldContent('description')) ?: __('site.meta_description');
     $css = public_path('assets/site.css');
     $js = public_path('assets/site.js');
+    // Built here: in the template itself Blade would read "@context" as a directive.
+    $jsonLd = [
+        '@context' => 'https://schema.org',
+        '@type' => 'SoftwareApplication',
+        'name' => '2DriveScan',
+        'applicationCategory' => 'UtilitiesApplication',
+        'operatingSystem' => 'macOS, Windows, Linux',
+        'description' => __('site.meta_description'),
+        'url' => url('/'),
+        'image' => asset('img/icon-1024.png'),
+        'softwareVersion' => $release['version'] ?? null,
+        'license' => 'https://opensource.org/licenses/MIT',
+        'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'EUR'],
+    ];
 @endphp
 <!doctype html>
 <html lang="{{ $locale }}" class="no-js">
@@ -39,19 +53,7 @@
     <script src="{{ asset('assets/site.js') }}?v={{ is_file($js) ? filemtime($js) : 1 }}" defer></script>
 
     <script type="application/ld+json">
-        {!! json_encode([
-            '@context' => 'https://schema.org',
-            '@type' => 'SoftwareApplication',
-            'name' => '2DriveScan',
-            'applicationCategory' => 'UtilitiesApplication',
-            'operatingSystem' => 'macOS, Windows, Linux',
-            'description' => __('site.meta_description'),
-            'url' => url('/'),
-            'image' => asset('img/icon-1024.png'),
-            'softwareVersion' => $release['version'] ?? null,
-            'license' => 'https://opensource.org/licenses/MIT',
-            'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'EUR'],
-        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}
+        {!! json_encode($jsonLd, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!}
     </script>
 </head>
 <body class="page-{{ $page }}">

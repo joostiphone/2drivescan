@@ -46,10 +46,11 @@ Production runs on a Debian 13 container (CT 142) with nginx and PHP 8.4:
   releases/<timestamp>/   full clone of the repository (main), web root: website/public
   current -> releases/…   the live release
   shared/.env             production settings (APP_KEY, APP_URL, TRUSTED_PROXIES, GITHUB_TOKEN)
-  shared/storage/         logs and cache, linked into every release
+  shared/storage/         logs, cache and app/downloads/history.json, linked into every release
 /usr/local/bin/2drivescan-deploy      deploy script (source: deploy/2drivescan-deploy)
 /etc/default/2drivescan-deploy        its settings
 2drivescan-update.timer               runs `2drivescan-deploy --if-changed` every 5 minutes
+2drivescan-downloads.timer            runs `artisan downloads:snapshot` every hour (history for /stats)
 ```
 
 All server configuration lives in `deploy/`, exactly as used in production:
@@ -62,6 +63,7 @@ All server configuration lives in `deploy/`, exactly as used in production:
 | `php-fpm-pool.conf` | `/etc/php/8.4/fpm/pool.d/2drivescan.conf` (`open_basedir`, `disable_functions`) |
 | `logrotate` | `/etc/logrotate.d/2drivescan` (Laravel logs only; nginx logs are rotated by Debian) |
 | `systemd/2drivescan-update.{service,timer}` | `/etc/systemd/system/` |
+| `systemd/2drivescan-downloads.{service,timer}` | `/etc/systemd/system/` |
 
 To set up a new server (Debian/Ubuntu with nginx, PHP-FPM 8.3+, Composer and git), run as root:
 
@@ -91,4 +93,13 @@ journalctl -u 2drivescan-update -n 50     # automatic deploys
 2drivescan-deploy                         # deploy main now
 cat /var/www/2drivescan/current/.release  # live release and commit
 php /var/www/2drivescan/current/website/artisan releases:refresh
+journalctl -u 2drivescan-downloads -n 20  # hourly download snapshots for /stats
 ```
+
+### Download statistics
+
+`/stats` shows how often each installer was downloaded, from GitHub's own download counters
+(`App\Services\DownloadStats`; signatures, `latest.json` and the macOS update bundle are not counted as
+installer downloads). The site itself counts nothing and sets no cookies. `downloads:snapshot` stores the
+cumulative counts per day (UTC) in `storage/app/downloads/history.json` for the chart; running it again on
+the same day replaces that day.

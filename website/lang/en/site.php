@@ -132,6 +132,31 @@ return [
         'note' => 'You donate on PayPal\'s own website. This site loads nothing from PayPal and sets no cookies.',
     ],
 
+    'stats' => [
+        'title' => 'Download statistics',
+        'meta_description' => 'How often 2DriveScan has been downloaded: per platform, version and installer, from GitHub\'s download counters.',
+        'lead' => 'How often 2DriveScan has been downloaded, per platform, version and installer.',
+        'total_label' => 'installer downloads',
+        'total_sub' => 'across :versions versions since :date',
+        'by_os' => 'By platform',
+        'share' => ':pct of all downloads',
+        'by_version' => 'By version',
+        'version' => 'Version',
+        'released' => 'Released',
+        'total' => 'Total',
+        'by_variant' => 'By installer',
+        'over_time' => 'Over time',
+        'chart_label' => 'Total installer downloads from :from to :to',
+        'history_since' => 'The history is recorded every hour since :date. The chart appears from the second day.',
+        'history_none' => 'The history is recorded every hour. The chart appears from the second day.',
+        'mac_updates' => 'macOS in-app updates: :count (not included above).',
+        'about_title' => 'About these numbers',
+        'about' => 'The numbers come from GitHub\'s own download counters for each installer. They include updates installed from within the app on Windows and Linux (those download the installer itself) and automated downloads, for example by bots and mirrors, so they are somewhat higher than the number of people. This website tracks no visitors and sets no cookies: the download buttons simply point to GitHub.',
+        'unavailable' => 'The statistics are temporarily unavailable. GitHub shows the download counts on the releases page.',
+        'downloaded' => 'Downloaded :count times',
+        'link' => 'Statistics',
+    ],
+
     'changelog' => [
         'title' => 'Changelog',
         'lead' => 'What changed in each version of 2DriveScan.',
@@ -148,5 +173,6 @@ return [
         'releases' => 'All releases',
         'issues' => 'Report a problem',
         'license' => 'License',
+        'stats' => 'Download statistics',
     ],
 ];

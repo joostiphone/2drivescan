@@ -59,6 +59,39 @@ class Releases
         return $release ? $this->normalize($release) : null;
     }
 
+    /**
+     * Every published release (newest first), for the download statistics.
+     * Drafts are skipped. With $fresh the cache is bypassed and null is
+     * returned when GitHub cannot be reached, so a snapshot never records
+     * old numbers; otherwise the cache and the last good answer are used.
+     *
+     * @return list<array>|null
+     */
+    public function all(bool $fresh = false): ?array
+    {
+        $releases = [];
+        for ($page = 1; $page <= 20; $page++) {
+            $path = '/releases?per_page=100&page='.$page;
+            $batch = $fresh ? $this->request($path) : $this->fetch($path);
+            if (! is_array($batch) || ! array_is_list($batch)) {
+                return null;
+            }
+            if ($fresh) {
+                Cache::put($this->cacheKey($path), $batch, config('site.cache_ttl'));
+            }
+            foreach ($batch as $release) {
+                if (is_array($release) && empty($release['draft'])) {
+                    $releases[] = $release;
+                }
+            }
+            if (count($batch) < 100) {
+                break;
+            }
+        }
+
+        return $releases;
+    }
+
     /** Download URL for an installer key, falling back to the releases page. */
     public function downloadUrl(string $key): string
     {
@@ -115,26 +148,30 @@ class Releases
     {
         $key = $this->cacheKey($path);
 
-        return Cache::remember($key, config('site.cache_ttl'), function () use ($key, $path) {
-            try {
-                $request = Http::acceptJson()
-                    ->withHeaders(['User-Agent' => '2drivescan-website', 'X-GitHub-Api-Version' => '2022-11-28'])
-                    ->timeout(6);
-                if ($token = config('site.token')) {
-                    $request = $request->withToken($token);
-                }
-                $response = $request->get('https://api.github.com/repos/'.$this->repo().$path);
-                if ($response->successful()) {
-                    Cache::forever($key.':last-good', $response->json());
+        return Cache::remember($key, config('site.cache_ttl'), fn () => $this->request($path) ?? Cache::get($key.':last-good'));
+    }
 
-                    return $response->json();
-                }
-                Log::warning('GitHub API returned '.$response->status().' for '.$path);
-            } catch (Throwable $e) {
-                Log::warning('GitHub API request failed: '.$e->getMessage());
+    /** One live GitHub API call; null when it fails. A good answer is kept as the fallback. */
+    protected function request(string $path): ?array
+    {
+        try {
+            $request = Http::acceptJson()
+                ->withHeaders(['User-Agent' => '2drivescan-website', 'X-GitHub-Api-Version' => '2022-11-28'])
+                ->timeout(6);
+            if ($token = config('site.token')) {
+                $request = $request->withToken($token);
             }
+            $response = $request->get('https://api.github.com/repos/'.$this->repo().$path);
+            if ($response->successful() && is_array($response->json())) {
+                Cache::forever($this->cacheKey($path).':last-good', $response->json());
 
-            return Cache::get($key.':last-good');
-        });
+                return $response->json();
+            }
+            Log::warning('GitHub API returned '.$response->status().' for '.$path);
+        } catch (Throwable $e) {
+            Log::warning('GitHub API request failed: '.$e->getMessage());
+        }
+
+        return null;
     }
 }

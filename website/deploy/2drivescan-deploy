@@ -117,7 +117,7 @@ switch_to "${NEW}"
 
 log "Health check"
 healthy=1
-for path in /up / /nl /download /changelog /demo/index.html; do
+for path in /up / /nl /download /changelog /stats /demo/index.html; do
     # A few tries: the first request after the PHP-FPM reload can be reset (502).
     for try in 1 2 3; do
         code="$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${DOMAIN}" -H 'X-Forwarded-Proto: https' "http://127.0.0.1${path}" || echo 000)"

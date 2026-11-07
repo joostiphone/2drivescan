@@ -24,6 +24,12 @@
                     <a href="{{ $release['url'] }}" rel="noopener">{{ __('site.download.on_github') }} @include('partials.icon', ['name' => 'external'])</a>
                 </p>
                 @include('partials.download-cta', ['align' => 'center'])
+                @if ($downloadTotal)
+                    <p class="dl-stats">
+                        {{ __('site.stats.downloaded', ['count' => nf($downloadTotal)]) }} ·
+                        <a href="{{ lroute('stats') }}">{{ __('site.stats.link') }}</a>
+                    </p>
+                @endif
             @else
                 <p class="lead">{{ __('site.download.unavailable') }}</p>
                 <p><a class="btn btn-primary btn-lg" href="{{ $releasesUrl }}" rel="noopener">@include('partials.icon', ['name' => 'github']) GitHub</a></p>

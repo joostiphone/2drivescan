@@ -8,6 +8,7 @@ $pages = function (string $locale): void {
     Route::get('/', [SiteController::class, 'home'])->name("$locale.home");
     Route::get('/download', [SiteController::class, 'download'])->name("$locale.download");
     Route::get('/changelog', [SiteController::class, 'changelog'])->name("$locale.changelog");
+    Route::get('/stats', [SiteController::class, 'stats'])->name("$locale.stats");
 };
 
 foreach (array_keys(config('site.locales')) as $i => $locale) {

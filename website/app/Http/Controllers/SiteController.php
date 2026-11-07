@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Services\Changelog;
+use App\Services\DownloadStats;
 use App\Services\Releases;
+use App\Support\LineChart;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Response;
 use Illuminate\View\View;
@@ -17,9 +19,23 @@ class SiteController extends Controller
         return view('home', $this->shared());
     }
 
-    public function download(): View
+    public function download(DownloadStats $stats): View
     {
-        return view('download', $this->shared());
+        return view('download', $this->shared() + [
+            'downloadTotal' => $stats->summary()['total'] ?? null,
+        ]);
+    }
+
+    /** Public download statistics, from GitHub's download counters. */
+    public function stats(DownloadStats $stats): View
+    {
+        $series = $stats->history();
+
+        return view('stats', $this->shared() + [
+            'stats' => $stats->summary(),
+            'series' => $series,
+            'chart' => LineChart::build($series),
+        ]);
     }
 
     public function changelog(Changelog $changelog): View
@@ -41,7 +57,7 @@ class SiteController extends Controller
     {
         $urls = [];
         foreach (array_keys(config('site.locales')) as $locale) {
-            foreach (['home', 'download', 'changelog'] as $page) {
+            foreach (['home', 'download', 'changelog', 'stats'] as $page) {
                 $urls[] = lroute($page, $locale);
             }
         }

@@ -34,6 +34,8 @@ The owner communicates in Dutch; the app UI and repo docs are English (UI also h
   atomic releases with health check and rollback; layout in `website/README.md`).
 - **Whenever the app changes, update the website in the same change:** feature texts in both languages,
   `docs/screenshots/` (re-render with Playwright), and both changelogs. Pushing to `main` deploys it.
+- `/stats`: public download statistics from GitHub's download counters (`DownloadStats`), with a daily
+  history written by `artisan downloads:snapshot` (hourly `2drivescan-downloads.timer` on the server).
 - Tests: `cd website && php artisan test && ./vendor/bin/pint --test`.
 - Server: CT 142 (192.168.1.145) in the owner's home network, nginx + PHP 8.4, published through a
   Cloudflare Tunnel (connector on CT 101). Not reachable from cloud sessions: server work goes through the

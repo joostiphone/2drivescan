@@ -12,7 +12,7 @@
 #   logrotate                   -> /etc/logrotate.d/2drivescan
 #   systemd/*                   -> /etc/systemd/system/
 # then creates /var/www/2drivescan/{releases,shared}, deploys main and enables
-# the 5-minute update timer. Existing configuration files are never
+# the 5-minute update timer and the hourly download-statistics timer. Existing configuration files are never
 # overwritten; delete one first to reinstall it. HTTPS (Cloudflare Tunnel) is
 # configured in Cloudflare, see website/README.md.
 set -euo pipefail
@@ -76,6 +76,8 @@ install_file nginx.conf /etc/nginx/sites-available/2drivescan
 install_file logrotate /etc/logrotate.d/2drivescan
 install_file systemd/2drivescan-update.service /etc/systemd/system/2drivescan-update.service
 install_file systemd/2drivescan-update.timer /etc/systemd/system/2drivescan-update.timer
+install_file systemd/2drivescan-downloads.service /etc/systemd/system/2drivescan-downloads.service
+install_file systemd/2drivescan-downloads.timer /etc/systemd/system/2drivescan-downloads.timer
 
 # The 2drivescan site is the server's default site (listen ... default_server),
 # so Debian's stock site is disabled. Only its symlink is removed; the
@@ -89,6 +91,7 @@ systemctl restart "php${PHP_VERSION}-fpm"
 systemctl daemon-reload
 /usr/local/bin/2drivescan-deploy
 systemctl enable --now 2drivescan-update.timer
+systemctl enable --now 2drivescan-downloads.timer
 
 echo
 echo "Done. 2drivescan.app is served on port 80; publish it over HTTPS with Cloudflare Tunnel."

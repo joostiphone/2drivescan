@@ -1,0 +1,10 @@
+[Unit]
+Description=Record 2DriveScan download counts every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

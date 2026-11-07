@@ -932,6 +932,363 @@ p {
   color: var(--text-2);
 }
 
+/* ---------------------------------------------------------------- stats */
+
+.os-macos {
+  --c: #a996ff;
+}
+
+.os-windows {
+  --c: #3ddbd9;
+}
+
+.os-linux {
+  --c: #ff7ac0;
+}
+
+.dl-stats {
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--text-3);
+}
+
+.dl-stats a {
+  color: var(--text-2);
+}
+
+.stat-total {
+  text-align: center;
+  padding: 34px 24px 30px;
+  border-radius: 24px;
+  background:
+    radial-gradient(90% 120% at 50% 0%, rgba(124, 92, 255, 0.16), transparent 65%),
+    var(--panel);
+  border: 1px solid var(--border);
+}
+
+.stat-number {
+  font-family: var(--font-display);
+  font-size: clamp(52px, 9vw, 92px);
+  font-weight: 780;
+  letter-spacing: -0.045em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.stat-label {
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.stat-sub {
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 14.5px;
+}
+
+.stat-h {
+  margin: 56px 0 18px;
+  font-size: clamp(24px, 3vw, 30px);
+  font-weight: 720;
+  letter-spacing: -0.025em;
+}
+
+.os-grid,
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.variant-grid {
+  align-items: start;
+}
+
+.os-card {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 22px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.os-card .platform-icon {
+  margin: 0;
+  color: var(--c);
+}
+
+.os-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.os-info h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.os-count {
+  margin: 2px 0 10px;
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.share,
+.bar {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--panel-strong);
+  overflow: hidden;
+}
+
+.share > span,
+.bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--c);
+}
+
+.small {
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.chart-card {
+  padding: 20px 20px 12px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.chart-card > p {
+  margin: 4px 4px 10px;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart .grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+/* Sizes are in chart units (960 wide): bigger as the chart is drawn smaller. */
+.chart .axis {
+  fill: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1100px) {
+  .chart .axis {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 760px) {
+  .chart .axis {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 520px) {
+  .chart .axis {
+    font-size: 30px;
+  }
+}
+
+.chart .dot {
+  fill: #fff;
+  stroke: #b64dff;
+  stroke-width: 2;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.stat-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-table th,
+.stat-table td {
+  padding: 13px 18px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.stat-table thead th {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.stat-table tbody tr + tr > * {
+  border-top: 1px solid var(--border);
+}
+
+.stat-table tbody th {
+  font-weight: 650;
+}
+
+.stat-table tbody th a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.stat-table tbody th a:hover {
+  text-decoration: underline;
+}
+
+.stat-table .badge {
+  margin-left: 8px;
+}
+
+.stat-table td {
+  color: var(--text-2);
+}
+
+.stat-table .num {
+  text-align: right;
+}
+
+.stat-table td.num b {
+  color: var(--text);
+}
+
+.stack {
+  display: flex;
+  width: 90px;
+  height: 6px;
+  margin: 6px 0 0 auto;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--panel-strong);
+}
+
+.stack > span {
+  background: var(--c);
+}
+
+.variant-card {
+  padding: 20px 22px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.variant-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 17px;
+}
+
+.variant-card h3 .icon {
+  width: 20px;
+  height: 20px;
+  color: var(--c);
+}
+
+.variant-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  padding: 10px 0;
+  align-items: baseline;
+}
+
+.variant-row + .variant-row {
+  border-top: 1px solid var(--border);
+}
+
+.variant-name {
+  color: var(--text-2);
+}
+
+.variant-name b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.variant-count {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.variant-row .bar {
+  grid-column: 1 / -1;
+  height: 5px;
+}
+
+.stat-about {
+  margin-top: 56px;
+  padding: 26px 28px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.stat-about h2 {
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+
+.stat-about p {
+  color: var(--text-2);
+  line-height: 1.6;
+  max-width: 820px;
+}
+
+.stat-about p + p {
+  margin-top: 10px;
+}
+
+@media (max-width: 900px) {
+  .os-grid,
+  .variant-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .chart-card {
+    padding: 12px 8px 6px;
+  }
+  .stat-table th,
+  .stat-table td {
+    padding: 11px 12px;
+  }
+  .stat-about {
+    padding: 22px 20px;
+  }
+}
+
 /* ---------------------------------------------------------------- donate */
 
 .nav-donate .icon,
@@ -1042,7 +1399,10 @@ p {
 }
 
 .page-hero h1 {
-  font-size: clamp(38px, 5vw, 60px);
+  font-size: clamp(32px, 5vw, 60px);
+  /* Long Dutch words such as "Downloadstatistieken" must fit a phone. */
+  overflow-wrap: break-word;
+  hyphens: auto;
   font-weight: 780;
   letter-spacing: -0.04em;
 }
@@ -1064,6 +1424,8 @@ p {
 
 .downloads {
   display: grid;
+  /* minmax(0, …): long file names and checksums must not widen the cards on phones. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -1072,6 +1434,10 @@ p {
   grid-template-columns: 1.15fr 1fr;
   gap: 32px;
   align-items: start;
+}
+
+.dl-body > * {
+  min-width: 0;
 }
 
 .dl-body h3:first-child {

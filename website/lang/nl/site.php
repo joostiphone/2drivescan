@@ -132,6 +132,31 @@ return [
         'note' => 'Je doneert op de website van PayPal zelf. Deze site laadt niets van PayPal en zet geen cookies.',
     ],
 
+    'stats' => [
+        'title' => 'Downloadstatistieken',
+        'meta_description' => 'Hoe vaak 2DriveScan is gedownload: per platform, versie en installer, volgens de downloadtellers van GitHub.',
+        'lead' => 'Hoe vaak 2DriveScan is gedownload, per platform, versie en installer.',
+        'total_label' => 'downloads van installers',
+        'total_sub' => 'van :versions versies sinds :date',
+        'by_os' => 'Per platform',
+        'share' => ':pct van alle downloads',
+        'by_version' => 'Per versie',
+        'version' => 'Versie',
+        'released' => 'Uitgebracht',
+        'total' => 'Totaal',
+        'by_variant' => 'Per installer',
+        'over_time' => 'In de loop van de tijd',
+        'chart_label' => 'Totaal aantal downloads van installers van :from tot :to',
+        'history_since' => 'De geschiedenis wordt sinds :date elk uur vastgelegd. De grafiek verschijnt vanaf de tweede dag.',
+        'history_none' => 'De geschiedenis wordt elk uur vastgelegd. De grafiek verschijnt vanaf de tweede dag.',
+        'mac_updates' => 'macOS-updates vanuit de app: :count (hierboven niet meegeteld).',
+        'about_title' => 'Over deze cijfers',
+        'about' => 'De cijfers komen van de eigen downloadtellers van GitHub voor elke installer. Ze tellen ook updates mee die vanuit de app op Windows en Linux worden geïnstalleerd (die downloaden de installer zelf) en automatische downloads, bijvoorbeeld door bots en mirrors. Ze liggen dus wat hoger dan het aantal mensen. Deze website houdt geen bezoekers bij en zet geen cookies: de downloadknoppen wijzen gewoon naar GitHub.',
+        'unavailable' => 'De statistieken zijn tijdelijk niet beschikbaar. GitHub toont de downloadaantallen op de releasepagina.',
+        'downloaded' => ':count keer gedownload',
+        'link' => 'Statistieken',
+    ],
+
     'changelog' => [
         'title' => 'Wijzigingen',
         'lead' => 'Wat er in elke versie van 2DriveScan veranderd is.',
@@ -148,5 +173,6 @@ return [
         'releases' => 'Alle releases',
         'issues' => 'Probleem melden',
         'license' => 'Licentie',
+        'stats' => 'Downloadstatistieken',
     ],
 ];
