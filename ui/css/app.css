@@ -2459,3 +2459,449 @@ kbd {
     grid-column: 1 / -1;
   }
 }
+
+/* ------------------------------------------------------------ 0.5: views, changes, duplicates, cleanup */
+
+.chart-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chart-tools .segmented {
+  margin-left: 0;
+}
+
+#viewmode button {
+  padding: 5px 8px;
+}
+
+.segmented button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The treemap has no center disc. */
+.view-treemap .center-label {
+  display: none;
+}
+
+.change-legend {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.change-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.change-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.center-delta,
+.tooltip .tt-change,
+.row .size.delta {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.center-delta {
+  margin-top: 2px;
+  font-size: 12.5px;
+}
+
+.tooltip .tt-change {
+  margin-top: 4px;
+}
+
+.up {
+  --chg: #ff7a6b;
+}
+
+.down {
+  --chg: #3ddbd9;
+}
+
+.new {
+  --chg: #ff6bb5;
+}
+
+.same {
+  --chg: var(--text-3);
+}
+
+.center-delta.up,
+.center-delta.down,
+.center-delta.new,
+.tt-change.up,
+.tt-change.down,
+.tt-change.new,
+.row .size.delta,
+.chg-delta {
+  color: var(--chg, var(--text));
+}
+
+:root[data-theme='light'] .up {
+  --chg: #e2483a;
+}
+
+:root[data-theme='light'] .down {
+  --chg: #0f9c9a;
+}
+
+:root[data-theme='light'] .new {
+  --chg: #d6337f;
+}
+
+/* Tabs: icons, with the label of the active tab. */
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-width: 34px;
+}
+
+.tabs button.active {
+  flex: 1 1 auto;
+}
+
+.tabs button .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.tabs button .tab-label {
+  display: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tabs button.active .tab-label {
+  display: inline;
+}
+
+.list-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: 2px 4px 8px;
+}
+
+.list-tools select,
+.dup-min select {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+.empty-state {
+  padding: 36px 22px;
+  text-align: center;
+  color: var(--text-3);
+}
+
+.empty-state .icon {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 10px;
+  color: var(--text-2);
+}
+
+.empty-state b {
+  display: block;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.empty-state p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.chg-head {
+  padding: 10px 10px 12px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chg-delta {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.chg-sub {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chg-head .link-btn {
+  margin: 8px 0 0 -6px;
+}
+
+.dup-intro,
+.dup-run {
+  padding: 26px 18px;
+  text-align: center;
+  color: var(--text-2);
+}
+
+.dup-intro > .icon {
+  width: 30px;
+  height: 30px;
+  color: var(--text-2);
+  margin-bottom: 10px;
+}
+
+.dup-intro b,
+.dup-run b {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.dup-intro p {
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.dup-min {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+}
+
+.dup-intro .btn {
+  display: flex;
+  margin: 0 auto;
+}
+
+.dup-phase {
+  margin: 4px 0 12px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel-strong);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.progress > div {
+  height: 100%;
+  width: 4%;
+  border-radius: 3px;
+  background: var(--accent-grad);
+  transition: width 0.3s;
+}
+
+.dup-summary {
+  padding: 8px 10px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.dup-summary b {
+  display: block;
+}
+
+.dup-summary p {
+  margin: 4px 0 10px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dup-actions,
+.dup-again {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dup-again {
+  justify-content: center;
+}
+
+.dup-group {
+  margin: 6px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.dup-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 8px;
+  font-size: 12px;
+}
+
+.dup-count {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.dup-extra {
+  color: var(--text-3);
+  flex: 1;
+}
+
+.clean-intro {
+  margin: 4px 8px 10px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sugg {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 4px 10px;
+  padding: 12px 10px;
+  border-radius: 12px;
+}
+
+.sugg + .sugg {
+  border-top: 1px solid var(--border);
+}
+
+.sugg-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-strong);
+  color: var(--text-2);
+}
+
+.sugg-icon .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.sugg-text b {
+  display: block;
+}
+
+.sugg-text p {
+  margin: 2px 0 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.sugg-meta {
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.sugg-meta b {
+  display: inline;
+  color: var(--text);
+}
+
+.sugg-actions {
+  grid-column: 2;
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.citem.more {
+  color: var(--text-3);
+  padding-right: 10px;
+}
+
+.excl-path {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500 !important;
+}
+
+.excl-path .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-3);
+}
+
+.excl-path span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.set-inline {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.set-inline .set-note {
+  margin: 4px 4px 0;
+}
+
+.set-inline .btn {
+  flex: none;
+}
+
+/* Duplicate rows: cut long folder paths at the start, so their end stays visible. */
+.dup-group .row .sub {
+  direction: rtl;
+  text-align: left;
+}
+
+/* Narrower windows: the color buttons show their icon, the active one also its name. */
+@media (max-width: 1280px) {
+  #colormode button:not(.active) .seg-label {
+    display: none;
+  }
+}
+
+.chart-top .usage {
+  min-width: 0;
+}
+
+.chart-top .usage-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -12,6 +12,10 @@
 //! size only; totals, file counts and per-type sums are recomputed on load.
 //! Hidden space is not stored: it depends on the volume at the time it is
 //! shown.
+//!
+//! Version 2 (2DriveScan 0.5) adds the modification time of every file and,
+//! at the end of the header, flags and the folders the scan excluded.
+//! Version 1 files still load; their files have no dates.
 
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Read, Write};
@@ -23,7 +27,10 @@ use crate::category::{Category, CATEGORY_COUNT};
 use crate::tree::{dominant, Kind, Node, NodeId, Tree, NO_PARENT};
 
 const MAGIC: &[u8; 6] = b"2DSCAN";
-const VERSION: u16 = 1;
+const VERSION: u16 = 2;
+const OLDEST_VERSION: u16 = 1;
+
+const HEADER_FILE_DATES: u8 = 1;
 
 const FLAG_UNREADABLE: u8 = 1;
 const FLAG_COMPLETE: u8 = 2;
@@ -42,6 +49,12 @@ pub struct SavedScan {
     pub unreadable: u64,
     /// Number of stored nodes.
     pub nodes: u64,
+    /// Files carry modification times (version 2).
+    #[serde(skip)]
+    pub file_dates: bool,
+    /// Folders the scan excluded (version 2).
+    #[serde(skip)]
+    pub excluded: Vec<String>,
 }
 
 fn kind_code(kind: Kind) -> u8 {
@@ -125,7 +138,7 @@ fn read_str(r: &mut impl Read, max: u64) -> io::Result<Box<str>> {
     Ok(String::from_utf8_lossy(&buf).into())
 }
 
-fn encode_header(s: &SavedScan) -> io::Result<Vec<u8>> {
+fn encode_header(s: &SavedScan, version: u16) -> io::Result<Vec<u8>> {
     let mut h = Vec::new();
     write_str(&mut h, &s.root_path)?;
     h.write_all(&s.scanned_at_ms.to_le_bytes())?;
@@ -133,6 +146,15 @@ fn encode_header(s: &SavedScan) -> io::Result<Vec<u8>> {
     h.push(s.complete as u8);
     for v in [s.size, s.files, s.dirs, s.unreadable, s.nodes] {
         h.write_all(&v.to_le_bytes())?;
+    }
+    if version < 2 {
+        return Ok(h);
+    }
+    // Version 2 additions; older readers ignore trailing header bytes.
+    h.push(if s.file_dates { HEADER_FILE_DATES } else { 0 });
+    write_varint(&mut h, s.excluded.len() as u64)?;
+    for e in &s.excluded {
+        write_str(&mut h, e)?;
     }
     Ok(h)
 }
@@ -149,7 +171,7 @@ fn decode_header(h: &[u8]) -> io::Result<SavedScan> {
     let elapsed_ms = next_u64(&mut r)?;
     let mut flag = [0u8; 1];
     r.read_exact(&mut flag)?;
-    Ok(SavedScan {
+    let mut summary = SavedScan {
         root_path,
         scanned_at_ms,
         elapsed_ms,
@@ -159,7 +181,24 @@ fn decode_header(h: &[u8]) -> io::Result<SavedScan> {
         dirs: next_u64(&mut r)?,
         unreadable: next_u64(&mut r)?,
         nodes: next_u64(&mut r)?,
-    })
+        file_dates: false,
+        excluded: Vec::new(),
+    };
+    // Version 2 additions (absent in version 1 headers).
+    if !r.is_empty() {
+        r.read_exact(&mut flag)?;
+        summary.file_dates = flag[0] & HEADER_FILE_DATES != 0;
+        let count = read_varint(&mut r)?;
+        if count > 10_000 {
+            return Err(bad("too many excluded folders"));
+        }
+        for _ in 0..count {
+            summary
+                .excluded
+                .push(read_str(&mut r, 64 * 1024)?.into_string());
+        }
+    }
+    Ok(summary)
 }
 
 /// Live (not removed, not hidden-space) children of a node.
@@ -172,6 +211,10 @@ fn stored_children<'a>(tree: &'a Tree, id: NodeId) -> impl Iterator<Item = NodeI
 
 /// Writes `tree` to `path` (atomically, through a temporary file).
 pub fn save(tree: &Tree, path: &Path, elapsed_ms: u64) -> io::Result<SavedScan> {
+    write(tree, path, elapsed_ms, VERSION)
+}
+
+fn write(tree: &Tree, path: &Path, elapsed_ms: u64, version: u16) -> io::Result<SavedScan> {
     let stats = tree.stats();
     let mut count = 0u64;
     let mut stack = vec![tree.root()];
@@ -189,6 +232,12 @@ pub fn save(tree: &Tree, path: &Path, elapsed_ms: u64) -> io::Result<SavedScan> 
         dirs: stats.dirs,
         unreadable: stats.unreadable,
         nodes: count,
+        file_dates: tree.has_file_dates() && version >= 2,
+        excluded: tree
+            .excluded()
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect(),
     };
 
     if let Some(dir) = path.parent() {
@@ -197,9 +246,9 @@ pub fn save(tree: &Tree, path: &Path, elapsed_ms: u64) -> io::Result<SavedScan> 
     let tmp = path.with_extension("tmp");
     {
         let mut out = BufWriter::new(File::create(&tmp)?);
-        let header = encode_header(&summary)?;
+        let header = encode_header(&summary, version)?;
         out.write_all(MAGIC)?;
-        out.write_all(&VERSION.to_le_bytes())?;
+        out.write_all(&version.to_le_bytes())?;
         out.write_all(&(header.len() as u32).to_le_bytes())?;
         out.write_all(&header)?;
         out.write_all(&tree.scanned_at().to_le_bytes())?;
@@ -225,6 +274,9 @@ pub fn save(tree: &Tree, path: &Path, elapsed_ms: u64) -> io::Result<SavedScan> 
                 write_varint(&mut body, children.len() as u64)?;
             } else {
                 write_varint(&mut body, n.size)?;
+                if version >= 2 {
+                    write_varint(&mut body, zigzag(n.mtime))?;
+                }
             }
             // Pre-order: push in reverse so the largest child is written first.
             stack.extend(children.into_iter().rev());
@@ -237,7 +289,7 @@ pub fn save(tree: &Tree, path: &Path, elapsed_ms: u64) -> io::Result<SavedScan> 
     Ok(summary)
 }
 
-fn open_checked(path: &Path) -> io::Result<(BufReader<File>, SavedScan)> {
+fn open_checked(path: &Path) -> io::Result<(BufReader<File>, SavedScan, u16)> {
     let mut r = BufReader::new(File::open(path)?);
     let mut magic = [0u8; 6];
     r.read_exact(&mut magic)?;
@@ -246,7 +298,8 @@ fn open_checked(path: &Path) -> io::Result<(BufReader<File>, SavedScan)> {
     }
     let mut v = [0u8; 2];
     r.read_exact(&mut v)?;
-    if u16::from_le_bytes(v) != VERSION {
+    let version = u16::from_le_bytes(v);
+    if !(OLDEST_VERSION..=VERSION).contains(&version) {
         return Err(bad("unsupported scan file version"));
     }
     let mut len = [0u8; 4];
@@ -257,17 +310,17 @@ fn open_checked(path: &Path) -> io::Result<(BufReader<File>, SavedScan)> {
     }
     let mut header = vec![0u8; len];
     r.read_exact(&mut header)?;
-    Ok((r, decode_header(&header)?))
+    Ok((r, decode_header(&header)?, version))
 }
 
 /// Reads only the summary of a saved scan.
 pub fn read_summary(path: &Path) -> io::Result<SavedScan> {
-    open_checked(path).map(|(_, s)| s)
+    open_checked(path).map(|(_, s, _)| s)
 }
 
 /// Loads a saved scan.
 pub fn load(path: &Path) -> io::Result<Tree> {
-    let (mut r, summary) = open_checked(path)?;
+    let (mut r, summary, version) = open_checked(path)?;
     let mut ts = [0u8; 8];
     r.read_exact(&mut ts)?;
     let scanned_at = i64::from_le_bytes(ts);
@@ -297,6 +350,8 @@ pub fn load(path: &Path) -> io::Result<Tree> {
         let size = read_varint(&mut body)?;
         let (mtime, child_count) = if kind == Kind::Dir {
             (unzigzag(read_varint(&mut body)?), read_varint(&mut body)?)
+        } else if version >= 2 {
+            (unzigzag(read_varint(&mut body)?), 0)
         } else {
             (0, 0)
         };
@@ -354,18 +409,25 @@ pub fn load(path: &Path) -> io::Result<Tree> {
     nodes[0].category = dominant(&root_cats);
 
     let unreadable = summary.unreadable;
+    let excluded = summary.excluded.iter().map(PathBuf::from).collect();
     Ok(Tree::from_nodes(
         PathBuf::from(summary.root_path),
         nodes,
         unreadable,
         scanned_at,
         summary.complete,
-    ))
+    )
+    .with_meta(summary.file_dates, excluded))
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// Writes a scan in an older format, for compatibility tests.
+    pub(crate) fn save_version(tree: &Tree, path: &Path, version: u16) -> io::Result<SavedScan> {
+        write(tree, path, 0, version)
+    }
 
     #[test]
     fn varints_and_zigzag_roundtrip() {

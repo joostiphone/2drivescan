@@ -140,7 +140,7 @@ export class Sunburst {
     return edges[i] + (edges[i + 1] - edges[i]) * (k - i);
   }
 
-  /** Replace the data. mode: 'sweep' | 'pop' | 'in' | 'out'. */
+  /** Replace the data. mode: 'sweep' | 'pop' | 'in' | 'out' | 'none' (no animation). */
   setData(root, mode = 'pop', anchorId = null) {
     const next = layout(root);
     const prev = this.view;
@@ -161,13 +161,17 @@ export class Sunburst {
         this.transition = { type: 'out', prev, next, b, skip, t0: now, dur: dur(620) };
       }
     }
-    if (!this.transition) {
+    if (!this.transition && mode !== 'none') {
       this.transition = { type: mode === 'sweep' ? 'sweep' : 'pop', next, t0: now, dur: dur(mode === 'sweep' ? 1100 : 420) };
     }
     this.view = next;
     this.hover = null;
-    this.labelAlpha = this.animate ? 0 : 1;
+    this.labelAlpha = this.animate && mode !== 'none' ? 0 : 1;
     this.render();
+  }
+
+  destroy() {
+    this._resize.disconnect();
   }
 
   setHighlight(id) {

@@ -1,6 +1,7 @@
 // Prevents an additional console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cleanup;
 mod volumes;
 
 use std::path::{Path, PathBuf};
@@ -8,7 +9,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
-use scan_core::{store, Crumb, ItemHit, NodeId, Progress, SavedScan, Tree, TreeStats, ViewNode};
+use scan_core::{
+    store, ChangeItem, Comparison, Crumb, DupProgress, DupSnapshot, ItemHit, NodeId, Progress,
+    SavedScan, Tree, TreeStats, ViewNode,
+};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
@@ -26,6 +30,16 @@ const KEEP_SAVED_SCANS: usize = 12;
 #[derive(Default)]
 struct AppState {
     tree: RwLock<Option<Tree>>,
+    /// Bumped whenever `tree` is replaced, so background work on an old tree
+    /// can tell its results are stale.
+    tree_gen: AtomicU64,
+    /// The open tree compared with the previous scan of the same folder.
+    compare: RwLock<Option<Arc<Comparison>>>,
+    /// Running duplicate search: (job id, progress).
+    dup: Mutex<Option<(u64, Arc<DupProgress>)>>,
+    /// Held while a scan is written, so comparing waits for the previous
+    /// scan to have been moved aside.
+    save_lock: Mutex<()>,
     active: Mutex<Option<(u64, Arc<Progress>)>>,
     next_id: AtomicU64,
     /// Scan time of the tree in `tree`, kept for re-saving it after changes.
@@ -81,6 +95,11 @@ struct DoneEvent {
     volume: Option<Volume>,
     /// Opened from disk instead of scanned just now.
     saved: bool,
+    /// When the previous scan of this folder was made, if it is kept for
+    /// comparing (milliseconds since the Unix epoch).
+    previous_ms: Option<i64>,
+    /// Files carry modification dates (scans saved before 0.5 do not).
+    file_dates: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -148,6 +167,47 @@ fn node_path_of(state: &AppState, id: NodeId) -> CmdResult<PathBuf> {
     })
 }
 
+/// Replaces the open tree. Comparisons and duplicate searches on the old tree
+/// are dropped.
+fn set_tree(state: &AppState, tree: Option<Tree>) {
+    cancel_dup(state);
+    state.tree_gen.fetch_add(1, Ordering::Relaxed);
+    if let Ok(mut c) = state.compare.write() {
+        *c = None;
+    }
+    if let Ok(mut slot) = state.tree.write() {
+        *slot = tree;
+    }
+}
+
+fn cancel_dup(state: &AppState) {
+    if let Ok(dup) = state.dup.lock() {
+        if let Some((_, p)) = &*dup {
+            p.cancel();
+        }
+    }
+}
+
+/// The previous scan of a folder, kept for comparing (see [`save_scan`]).
+fn previous_file(app: &AppHandle, root: &Path) -> Option<PathBuf> {
+    scan_file(app, root).map(|f| f.with_extension("prev"))
+}
+
+fn previous_ms(app: &AppHandle, root: &Path) -> Option<i64> {
+    previous_file(app, root)
+        .and_then(|f| store::read_summary(&f).ok())
+        .map(|s| s.scanned_at_ms)
+}
+
+/// The previous scan once a new scan (started at `scanned_at_ms`) has been
+/// saved: the saved scan it replaces, or the one kept before.
+fn previous_after_save(app: &AppHandle, root: &Path, scanned_at_ms: i64) -> Option<i64> {
+    match scan_file(app, root).map(|f| store::read_summary(&f)) {
+        Some(Ok(s)) if s.complete && s.scanned_at_ms != scanned_at_ms => Some(s.scanned_at_ms),
+        _ => previous_ms(app, root),
+    }
+}
+
 /// Folder where scans are saved.
 fn scans_dir(app: &AppHandle) -> Option<PathBuf> {
     app.path()
@@ -186,15 +246,33 @@ fn saved_scan_files(app: &AppHandle) -> Vec<(PathBuf, SavedScan)> {
 }
 
 /// Saves a scan and removes the oldest saved scans beyond the limit.
+///
+/// When a new, different scan replaces a finished one, the finished one is
+/// kept as `<hash>.prev` so the next scan can show what changed. Re-saving the
+/// same scan (after moving items to the Trash) or saving an interrupted scan
+/// over an interrupted one keeps the existing previous scan.
 fn save_scan(app: &AppHandle, tree: &Tree, elapsed_ms: u64) {
+    let state = app.state::<AppState>();
+    let _saving = state.save_lock.lock();
+    write_scan(app, tree, elapsed_ms);
+}
+
+/// [`save_scan`] for callers that already hold the save lock.
+fn write_scan(app: &AppHandle, tree: &Tree, elapsed_ms: u64) {
     let Some(file) = scan_file(app, tree.root_path()) else {
         return;
     };
+    if let Ok(existing) = store::read_summary(&file) {
+        if existing.complete && existing.scanned_at_ms != tree.stats().scanned_at_ms {
+            let _ = std::fs::rename(&file, file.with_extension("prev"));
+        }
+    }
     if let Err(e) = store::save(tree, &file, elapsed_ms) {
         eprintln!("could not save scan: {e}");
         return;
     }
     for (old, _) in saved_scan_files(app).into_iter().skip(KEEP_SAVED_SCANS) {
+        let _ = std::fs::remove_file(old.with_extension("prev"));
         let _ = std::fs::remove_file(old);
     }
 }
@@ -202,11 +280,18 @@ fn save_scan(app: &AppHandle, tree: &Tree, elapsed_ms: u64) {
 /// Re-saves the tree that is open (after items were moved to the trash).
 fn resave_current(app: &AppHandle) {
     let state = app.state::<AppState>();
+    let _saving = state.save_lock.lock();
+    write_current(app);
+}
+
+/// [`resave_current`] for callers that already hold the save lock.
+fn write_current(app: &AppHandle) {
+    let state = app.state::<AppState>();
     let Ok(guard) = state.tree.read() else {
         return;
     };
     if let Some(tree) = guard.as_ref() {
-        save_scan(app, tree, state.elapsed_ms.load(Ordering::Relaxed));
+        write_scan(app, tree, state.elapsed_ms.load(Ordering::Relaxed));
     }
 }
 
@@ -345,7 +430,10 @@ fn scan_folder_files(app: &AppHandle) -> Vec<PathBuf> {
         .map(|rd| {
             rd.flatten()
                 .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|x| x == "2ds" || x == "tmp"))
+                .filter(|p| {
+                    p.extension()
+                        .is_some_and(|x| x == "2ds" || x == "prev" || x == "tmp")
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -402,14 +490,17 @@ fn open_saved(app: AppHandle, state: State<'_, AppState>, path: String) -> CmdRe
     let volume = volumes::plan_for(&root).volume;
     add_hidden_space(&mut tree, volume.as_ref());
     let stats = tree.stats();
+    let file_dates = tree.has_file_dates();
     state.elapsed_ms.store(elapsed_ms, Ordering::Relaxed);
-    *state.tree.write().map_err(|_| "state poisoned")? = Some(tree);
+    set_tree(&state, Some(tree));
     Ok(DoneEvent {
         scan_id: 0,
         stats,
         elapsed_ms,
         volume,
         saved: true,
+        previous_ms: previous_ms(&app, &root),
+        file_dates,
     })
 }
 
@@ -422,10 +513,20 @@ fn start_scan(
     state: State<'_, AppState>,
     path: String,
     full: Option<bool>,
+    exclude: Option<Vec<String>>,
 ) -> CmdResult<u64> {
     let full = full.unwrap_or(false);
     let root = volumes::normalize(&path)?;
-    let plan = volumes::plan_for(&root);
+    let mut plan = volumes::plan_for(&root);
+    // Folders the user excluded in Settings, as far as they are inside this scan.
+    for e in exclude.unwrap_or_default() {
+        if let Ok(p) = volumes::normalize(&e) {
+            if p != root && p.starts_with(&root) && !plan.opts.excluded.contains(&p) {
+                plan.opts.excluded.push(p);
+            }
+        }
+    }
+    plan.opts.excluded.sort();
     let scan_id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
     let progress = Arc::new(Progress::new());
     {
@@ -435,9 +536,7 @@ fn start_scan(
         }
     }
     // Free the previous tree right away; scans can be big.
-    if let Ok(mut tree) = state.tree.write() {
-        *tree = None;
-    }
+    set_tree(&state, None);
     std::thread::Builder::new()
         .name("scan-coordinator".into())
         .stack_size(64 * 1024 * 1024)
@@ -512,12 +611,15 @@ fn run_scan(
             add_hidden_space(&mut tree, plan.volume.as_ref());
             let stats = tree.stats();
             state.elapsed_ms.store(elapsed_ms, Ordering::Relaxed);
-            if let Ok(mut slot) = state.tree.write() {
-                *slot = Some(tree);
-            }
+            let previous_ms = previous_after_save(&app, &root, stats.scanned_at_ms);
+            let file_dates = tree.has_file_dates();
+            set_tree(&state, Some(tree));
             if let Ok(mut a) = state.active.lock() {
                 *a = None;
             }
+            // Hold the save lock until the scan is written, so a comparison
+            // asked for right after this event waits for it.
+            let saving = state.save_lock.lock();
             let _ = app.emit(
                 "scan-done",
                 DoneEvent {
@@ -526,9 +628,12 @@ fn run_scan(
                     elapsed_ms,
                     volume: plan.volume.clone(),
                     saved: false,
+                    previous_ms,
+                    file_dates,
                 },
             );
-            resave_current(&app);
+            write_current(&app);
+            drop(saving);
         }
         Ok(partial) => {
             // Stopped early: keep what was read so the next scan continues.
@@ -574,12 +679,20 @@ fn cancel_scan(state: State<'_, AppState>) {
     }
 }
 
+fn comparison(state: &AppState) -> Option<Arc<Comparison>> {
+    state.compare.read().ok().and_then(|c| c.clone())
+}
+
 #[tauri::command(async)]
 fn get_view(state: State<'_, AppState>, id: NodeId, depth: u32) -> CmdResult<ViewResponse> {
+    let cmp = comparison(&state);
     with_tree(&state, |t| {
-        let root = t
+        let mut root = t
             .view(id, depth.min(MAX_VIEW_DEPTH), MIN_ARC_FRACTION)
             .ok_or_else(|| "item no longer exists".to_string())?;
+        if let Some(c) = &cmp {
+            c.annotate(t, &mut root);
+        }
         Ok(ViewResponse {
             root,
             crumbs: t.crumbs(id),
@@ -590,12 +703,292 @@ fn get_view(state: State<'_, AppState>, id: NodeId, depth: u32) -> CmdResult<Vie
 
 #[tauri::command(async)]
 fn list_children(state: State<'_, AppState>, id: NodeId, limit: usize) -> CmdResult<Vec<ViewNode>> {
-    with_tree(&state, |t| Ok(t.list_children(id, limit.clamp(1, 5000))))
+    let cmp = comparison(&state);
+    with_tree(&state, |t| {
+        let mut list = t.list_children(id, limit.clamp(1, 5000));
+        if let Some(c) = &cmp {
+            list.iter_mut().for_each(|v| c.annotate(t, v));
+        }
+        Ok(list)
+    })
 }
 
+/// The largest files below `id`; with `older_than_days`, only files not
+/// modified for that many days.
 #[tauri::command(async)]
-fn largest_files(state: State<'_, AppState>, id: NodeId, limit: usize) -> CmdResult<Vec<ItemHit>> {
-    with_tree(&state, |t| Ok(t.largest_files(id, limit.clamp(1, 1000))))
+fn largest_files(
+    state: State<'_, AppState>,
+    id: NodeId,
+    limit: usize,
+    older_than_days: Option<u32>,
+) -> CmdResult<Vec<ItemHit>> {
+    let before = older_than_days.filter(|&d| d > 0).map(|d| {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos() as i64);
+        now - i64::from(d) * 86_400 * 1_000_000_000
+    });
+    with_tree(&state, |t| {
+        Ok(t.largest_files_before(id, limit.clamp(1, 1000), before))
+    })
+}
+
+#[derive(Serialize)]
+struct CompareInfo {
+    previous_ms: i64,
+    /// Change of the whole scan.
+    delta: i64,
+}
+
+/// Compares the open scan with the previous scan of the same folder (loaded
+/// from disk the first time). None when there is no previous scan.
+#[tauri::command(async)]
+fn load_comparison(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Option<CompareInfo>> {
+    let info = |c: &Comparison, t: &Tree| CompareInfo {
+        previous_ms: c.previous_ms,
+        delta: c.delta(t, t.root()).unwrap_or(0),
+    };
+    if let Some(c) = comparison(&state) {
+        return with_tree(&state, |t| Ok(Some(info(&c, t))));
+    }
+    let gen = state.tree_gen.load(Ordering::Relaxed);
+    let root = with_tree(&state, |t| Ok(t.root_path().to_path_buf()))?;
+    // Wait until a scan that just finished has been saved (and the one it
+    // replaced moved aside as the previous scan).
+    drop(state.save_lock.lock());
+    let Some(file) = previous_file(&app, &root).filter(|f| f.exists()) else {
+        return Ok(None);
+    };
+    let earlier =
+        store::load(&file).map_err(|e| format!("could not read the previous scan: {e}"))?;
+    if earlier.root_path() != root {
+        return Ok(None);
+    }
+    let cmp = Arc::new(with_tree(&state, |t| Ok(t.compare_with(&earlier)))?);
+    drop(earlier);
+    if state.tree_gen.load(Ordering::Relaxed) != gen {
+        return Err("the scan changed".into());
+    }
+    if let Ok(mut slot) = state.compare.write() {
+        *slot = Some(cmp.clone());
+    }
+    with_tree(&state, |t| Ok(Some(info(&cmp, t))))
+}
+
+#[derive(Serialize)]
+struct ChangesResponse {
+    previous_ms: i64,
+    /// Change of the folder itself.
+    delta: i64,
+    size: u64,
+    items: Vec<ChangeItem>,
+}
+
+/// Direct children of `id` that grew or shrank since the previous scan.
+#[tauri::command(async)]
+fn changes(
+    state: State<'_, AppState>,
+    id: NodeId,
+    limit: usize,
+) -> CmdResult<Option<ChangesResponse>> {
+    let Some(cmp) = comparison(&state) else {
+        return Ok(None);
+    };
+    with_tree(&state, |t| {
+        let node = t
+            .get(id)
+            .ok_or_else(|| "item no longer exists".to_string())?;
+        Ok(Some(ChangesResponse {
+            previous_ms: cmp.previous_ms,
+            delta: cmp.delta(t, id).unwrap_or(0),
+            size: node.size,
+            items: cmp.changes(t, id, limit.clamp(1, 5000)),
+        }))
+    })
+}
+
+#[derive(Serialize, Clone)]
+struct DupFile {
+    id: NodeId,
+    name: String,
+    path: String,
+    size: u64,
+    cat: u8,
+}
+
+#[derive(Serialize, Clone)]
+struct DupGroupOut {
+    len: u64,
+    size: u64,
+    wasted: u64,
+    files: Vec<DupFile>,
+}
+
+#[derive(Serialize, Clone)]
+struct DupProgressEvent {
+    job: u64,
+    #[serde(flatten)]
+    progress: DupSnapshot,
+}
+
+#[derive(Serialize, Clone)]
+struct DupDoneEvent {
+    job: u64,
+    root: NodeId,
+    cancelled: bool,
+    groups: Vec<DupGroupOut>,
+    /// Number of groups found (only the largest are sent).
+    total_groups: usize,
+    /// Space all extra copies take.
+    wasted: u64,
+}
+
+const MAX_DUP_GROUPS: usize = 400;
+
+/// Starts looking for duplicate files below `id`. Progress arrives as
+/// `dup-progress` events and the result as one `dup-done` event.
+#[tauri::command(async)]
+fn find_duplicates(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: NodeId,
+    min_size: u64,
+) -> CmdResult<u64> {
+    let gen = state.tree_gen.load(Ordering::Relaxed);
+    let candidates = with_tree(&state, |t| {
+        t.get(id)
+            .ok_or_else(|| "item no longer exists".to_string())?;
+        Ok(scan_core::duplicate_candidates(t, id, min_size.max(1)))
+    })?;
+    let job = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+    let progress = Arc::new(DupProgress::new());
+    if let Ok(mut dup) = state.dup.lock() {
+        if let Some((_, old)) = dup.replace((job, progress.clone())) {
+            old.cancel();
+        }
+    }
+    std::thread::Builder::new()
+        .name("duplicates".into())
+        .spawn(move || {
+            let finished = Arc::new(AtomicBool::new(false));
+            let ticker = {
+                let (app, progress, finished) = (app.clone(), progress.clone(), finished.clone());
+                std::thread::spawn(move || {
+                    while !finished.load(Ordering::Relaxed) {
+                        let _ = app.emit(
+                            "dup-progress",
+                            DupProgressEvent {
+                                job,
+                                progress: progress.snapshot(),
+                            },
+                        );
+                        std::thread::sleep(Duration::from_millis(150));
+                    }
+                })
+            };
+            let groups = scan_core::compare_files(candidates, &progress);
+            finished.store(true, Ordering::Relaxed);
+            let _ = ticker.join();
+
+            let state = app.state::<AppState>();
+            let cancelled =
+                progress.is_cancelled() || state.tree_gen.load(Ordering::Relaxed) != gen;
+            let wasted = groups.iter().map(|g| g.wasted()).sum();
+            let total_groups = groups.len();
+            let out = if cancelled {
+                Vec::new()
+            } else {
+                with_tree(&state, |t| {
+                    Ok(groups
+                        .iter()
+                        .take(MAX_DUP_GROUPS)
+                        .map(|g| DupGroupOut {
+                            len: g.len,
+                            size: g.size,
+                            wasted: g.wasted(),
+                            files: g
+                                .ids
+                                .iter()
+                                .filter_map(|&f| {
+                                    let n = t.get(f)?;
+                                    Some(DupFile {
+                                        id: f,
+                                        name: n.name.to_string(),
+                                        path: t.path_of(f).display().to_string(),
+                                        size: n.size,
+                                        cat: n.category as u8,
+                                    })
+                                })
+                                .collect(),
+                        })
+                        .collect())
+                })
+                .unwrap_or_default()
+            };
+            if let Ok(mut dup) = state.dup.lock() {
+                if matches!(&*dup, Some((j, _)) if *j == job) {
+                    *dup = None;
+                }
+            }
+            let _ = app.emit(
+                "dup-done",
+                DupDoneEvent {
+                    job,
+                    root: id,
+                    cancelled,
+                    groups: out,
+                    total_groups,
+                    wasted,
+                },
+            );
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(job)
+}
+
+#[tauri::command]
+fn cancel_duplicates(state: State<'_, AppState>) {
+    cancel_dup(&state);
+}
+
+/// Cleanup suggestions for the open scan.
+#[tauri::command(async)]
+fn cleanup_suggestions(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<cleanup::Suggestion>> {
+    let home = app.path().home_dir().ok();
+    with_tree(&state, |t| Ok(cleanup::suggestions(t, home.as_deref())))
+}
+
+/// Saves the folders (and files of 1 MB or more) below `id` as a CSV file the
+/// user picks. Returns the file's path, or None when the dialog was cancelled.
+#[tauri::command]
+async fn export_csv(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: NodeId,
+    file_name: String,
+) -> CmdResult<Option<String>> {
+    let Some(target) = app
+        .dialog()
+        .file()
+        .set_file_name(file_name)
+        .add_filter("CSV", &["csv"])
+        .blocking_save_file()
+        .and_then(|p| p.into_path().ok())
+    else {
+        return Ok(None);
+    };
+    let file = std::fs::File::create(&target).map_err(|e| e.to_string())?;
+    let mut out = std::io::BufWriter::new(file);
+    with_tree(&state, |t| {
+        t.get(id)
+            .ok_or_else(|| "item no longer exists".to_string())?;
+        cleanup::write_csv(t, id, &mut out).map_err(|e| e.to_string())
+    })?;
+    std::io::Write::flush(&mut out).map_err(|e| e.to_string())?;
+    Ok(Some(target.display().to_string()))
 }
 
 #[tauri::command(async)]
@@ -743,6 +1136,7 @@ async fn trash_nodes(
     }
 
     let mut freed = 0;
+    cancel_dup(&state);
     let stats = {
         let mut guard = state
             .tree
@@ -792,6 +1186,12 @@ fn main() {
             scan_storage,
             clear_saved_scans,
             open_saved,
+            load_comparison,
+            changes,
+            find_duplicates,
+            cancel_duplicates,
+            cleanup_suggestions,
+            export_csv,
             start_scan,
             cancel_scan,
             get_view,

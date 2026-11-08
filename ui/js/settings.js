@@ -5,7 +5,7 @@ import { api, isPreview } from './api.js';
 import { t, LANGUAGES } from './i18n.js';
 import { bytes, escapeHtml as esc } from './format.js';
 import { icon } from './icons.js';
-import { getPref } from './prefs.js';
+import { getPref, getList, setList } from './prefs.js';
 
 export const URLS = {
   site: 'https://2drivescan.app',
@@ -163,6 +163,7 @@ const PAGE_RENDER = {
         <div class="set-group-title">${esc(t('set_chart'))}</div>
         <div class="set-card">
           ${row(t('color_by'), t('set_color_hint'), seg('colorMode', [['folder', t('color_folders')], ['type', t('color_types')]]))}
+          ${row(t('set_view'), t('set_view_hint'), seg('chartView', [['sunburst', t('view_sunburst')], ['treemap', t('view_treemap')]]))}
           ${row(t('set_rings'), t('set_rings_hint'), seg('rings', ['4', '5', '6', '7'].map((n) => [n, n])))}
           ${row(t('set_motion'), t('set_motion_hint'), seg('motion', [['auto', t('opt_auto')], ['on', t('opt_on')], ['off', t('opt_off')]]))}
         </div>
@@ -252,7 +253,29 @@ const PAGE_RENDER = {
         </div>`
       : '';
     const showFda = hooks.info().os === 'macos' && !isPreview;
+    const excluded = getList('excluded');
+    const excludedRows = excluded.length
+      ? excluded
+          .map(
+            (path, i) => `
+        <div class="set-row excl-row">
+          <div class="set-label"><b class="excl-path" title="${esc(path)}">${icon('ban')}<span>&lrm;${esc(path)}&lrm;</span></b></div>
+          <div class="set-control"><button class="btn btn-sm ghost" type="button" data-unexclude="${i}" data-focus-key="unexclude-${i}">${esc(t('set_excluded_remove'))}</button></div>
+        </div>`,
+          )
+          .join('')
+      : `<div class="set-row"><div class="set-label"><span>${esc(t('set_excluded_none'))}</span></div></div>`;
     return `
+      <div class="set-group">
+        <div class="set-group-title">${esc(t('set_excluded'))}</div>
+        <div class="set-card">
+          ${excludedRows}
+        </div>
+        <div class="set-inline">
+          <p class="set-note">${esc(t('set_excluded_hint'))}</p>
+          <button class="btn btn-sm" type="button" data-act="exclude-add" data-focus-key="exclude-add">${icon('folderPlus')}${esc(t('set_excluded_add'))}</button>
+        </div>
+      </div>
       <div class="set-group">
         <div class="set-group-title">${esc(t('scans_saved'))}</div>
         <div class="set-card">
@@ -356,6 +379,13 @@ async function onClick(e) {
     api.openExternal(urlFor(d.url)).catch(() => {});
     return;
   }
+  if (d.unexclude != null) {
+    const list = getList('excluded');
+    list.splice(+d.unexclude, 1);
+    setList('excluded', list);
+    render();
+    return;
+  }
   switch (d.act) {
     case 'close':
       closeSettings();
@@ -378,6 +408,15 @@ async function onClick(e) {
     case 'clear-ok':
       await clearScans();
       break;
+    case 'exclude-add': {
+      const path = await api.pickFolder().catch(() => null);
+      if (path) {
+        const list = getList('excluded');
+        if (!list.includes(path)) setList('excluded', [...list, path].sort());
+        render();
+      }
+      break;
+    }
   }
 }
 

@@ -3,8 +3,9 @@ import { t, lang, setLanguage } from './i18n.js';
 import { bytes, bytesParts, count, percent, duration, truncateMiddle, escapeHtml as esc, setBinaryUnits } from './format.js';
 import { icon } from './icons.js';
 import { Sunburst } from './sunburst.js';
-import { CATEGORIES, CATEGORY_COLORS, HIDDEN_COLOR, GROUP_COLOR, css } from './colors.js';
-import { getPref, setPref, animationsOn } from './prefs.js';
+import { Treemap } from './treemap.js';
+import { CATEGORIES, CATEGORY_COLORS, HIDDEN_COLOR, GROUP_COLOR, CHANGE_COLORS, css } from './colors.js';
+import { getPref, setPref, getList, setList, animationsOn } from './prefs.js';
 import { initSettings, openSettings, toggleSettings, settingsOpen, closeSettings, refreshSettings, settingsProgress, URLS } from './settings.js';
 
 const LIST_LIMIT = 1500;
@@ -27,6 +28,18 @@ const state = {
   view: null,
   tab: 'contents',
   colorMode: getPref('colorMode'),
+  chartView: getPref('chartView'),
+  // Comparison with the previous scan: {previous_ms, delta} once loaded.
+  compare: null,
+  compareLoading: null,
+  // Duplicate search: job, progress and result (kept until searched again).
+  dup: { job: null, running: false, progress: null, result: null, minSize: 10_000_000, rootName: '' },
+  lastDupDone: null,
+  // Cleanup suggestions for the open scan.
+  suggest: null,
+  // Largest files: only files not changed for this many days (0 = any age).
+  ageDays: 0,
+  resultToken: 0,
   query: '',
   collector: new Map(),
   rows: new Map(),
@@ -58,6 +71,21 @@ function displayName(node) {
   if (node.kind === 'group') return t('smaller_items', { n: count(node.items) });
   if (node.id === state.rootId) return state.scanLabel || node.name;
   return node.name;
+}
+
+/** "+1.2 GB" / "−300 MB" for a change in size. */
+function signedBytes(n) {
+  if (!n) return bytes(0);
+  return `${n > 0 ? '+' : '−'}${bytes(Math.abs(n))}`;
+}
+
+function changeClass(item) {
+  if (item.new) return 'new';
+  return item.delta > 0 ? 'up' : item.delta < 0 ? 'down' : 'same';
+}
+
+function shortDate(ms, withTime = false) {
+  return new Date(ms).toLocaleString(lang(), withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function colorFor(item) {
@@ -164,6 +192,9 @@ function applyPref(name, value) {
       break;
     case 'rings':
       if (document.body.dataset.screen === 'result') rebuildResult();
+      break;
+    case 'chartView':
+      setChartView(value);
       break;
     case 'motion':
       applyMotion();
@@ -435,7 +466,7 @@ async function startScan(path, label, { full = false } = {}) {
   renderScan();
   setScreen('scan');
   try {
-    state.scanId = await api.startScan(path, full);
+    state.scanId = await api.startScan(path, full, getList('excluded'));
   } catch (e) {
     toast(`${t('scan_failed')}: ${errText(e)}`, 'err');
     showHome();
@@ -460,9 +491,15 @@ function onProgress(p) {
 function onDone(d, opened = false) {
   if (!opened && state.scanId != null && d.scan_id !== state.scanId) return;
   state.result = d;
+  state.resultToken++;
   state.rootId = d.stats.root_id;
   state.collector.clear();
   state.query = '';
+  state.compare = null;
+  state.compareLoading = null;
+  state.suggest = null;
+  if (state.dup.running) api.cancelDuplicates().catch(() => {});
+  state.dup = { ...state.dup, job: null, running: false, progress: null, result: null };
   showResult();
 }
 
@@ -480,9 +517,16 @@ function renderResultShell() {
       <div class="chart-wrap">
         <div class="chart-top">
           <div class="usage glass" id="usage"></div>
-          <div class="segmented glass" id="colormode">
-            <button type="button" data-mode="folder">${icon('pie')}${esc(t('color_folders'))}</button>
-            <button type="button" data-mode="type">${icon('layers')}${esc(t('color_types'))}</button>
+          <div class="chart-tools">
+            <div class="segmented glass" id="viewmode">
+              <button type="button" data-view="sunburst" title="${esc(t('view_sunburst'))}" aria-label="${esc(t('view_sunburst'))}">${icon('pie')}</button>
+              <button type="button" data-view="treemap" title="${esc(t('view_treemap'))}" aria-label="${esc(t('view_treemap'))}">${icon('grid')}</button>
+            </div>
+            <div class="segmented glass" id="colormode">
+              <button type="button" data-mode="folder" aria-label="${esc(t('color_folders'))}">${icon('folder')}<span class="seg-label">${esc(t('color_folders'))}</span></button>
+              <button type="button" data-mode="type" aria-label="${esc(t('color_types'))}">${icon('layers')}<span class="seg-label">${esc(t('color_types'))}</span></button>
+              <button type="button" data-mode="change" aria-label="${esc(t('color_changes'))}">${icon('trend')}<span class="seg-label">${esc(t('color_changes'))}</span></button>
+            </div>
           </div>
         </div>
         <div class="chart-canvas-host" id="chart-host">
@@ -494,6 +538,7 @@ function renderResultShell() {
       <aside class="panel glass">
         <div class="panel-head">
           <div class="panel-title"><h2 id="p-title"></h2><p id="p-sub"></p></div>
+          <button class="icon-btn" id="p-export" type="button" title="${esc(t('export_csv'))}" aria-label="${esc(t('export_csv'))}">${icon('download')}</button>
           <button class="icon-btn" id="p-reveal" type="button" title="${esc(revealLabel())}">${icon('eye')}</button>
         </div>
         <div class="search" id="search">
@@ -501,42 +546,34 @@ function renderResultShell() {
           <input id="search-input" type="text" spellcheck="false" autocomplete="off" placeholder="${esc(t('search_placeholder'))}" />
           <button class="clear" type="button">${icon('x')}</button>
         </div>
-        <div class="tabs" id="tabs">
-          <button type="button" data-tab="contents">${esc(t('contents'))}</button>
-          <button type="button" data-tab="largest">${esc(t('largest'))}</button>
-          <button type="button" data-tab="types">${esc(t('types'))}</button>
+        <div class="tabs" id="tabs" role="tablist">
+          ${[
+            ['contents', 'list', 'contents'],
+            ['largest', 'file', 'largest'],
+            ['types', 'pie', 'types'],
+            ['changes', 'trend', 'changes'],
+            ['dupes', 'copy', 'duplicates'],
+            ['cleanup', 'broom', 'cleanup'],
+          ]
+            .map(([tab, ic, label]) => `<button type="button" role="tab" data-tab="${tab}" title="${esc(t(label))}">${icon(ic)}<span class="tab-label">${esc(t(label))}</span></button>`)
+            .join('')}
         </div>
         <div class="panel-body" id="p-body"></div>
       </aside>
       <div class="collector glass" id="collector"></div>
     </div>`;
 
-  chart = new Sunburst($('#chart'), {
-    rings: rings(),
-    animate: animationsOn(),
-    hiddenLabel: t('hidden_space'),
-    canGoUp: () => state.focusId !== state.rootId,
-    onGeometry: positionCenter,
-    onHover: onChartHover,
-    onClick: (node) => {
-      if (node.id < 0) return;
-      if (node.kind === 'dir' && node.has_children) zoomIn(node.id);
-      else highlightRow(node.id, true);
-    },
-    onDblClick: (node) => {
-      if (node.id >= 0 && node.kind !== 'dir' && node.kind !== 'hidden') api.revealNode(node.id).catch((e) => toast(errText(e), 'err'));
-    },
-    onCenterClick: goUp,
-    onContext: (node, e) => showMenu(node, e),
-    onDragStart: (node, e) => beginDrag(node, e),
-  });
-  chart.setMode(state.colorMode);
-  syncChartTheme();
+  createChart();
 
   $('#colormode').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-mode]');
-    if (b) setColorMode(b.dataset.mode);
+    if (b && !b.disabled) setColorMode(b.dataset.mode);
   });
+  $('#viewmode').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-view]');
+    if (b) applyPref('chartView', b.dataset.view);
+  });
+  $('#p-export').addEventListener('click', exportCsv);
   $('#tabs').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-tab]');
     if (!b) return;
@@ -571,6 +608,73 @@ function renderResultShell() {
   renderCollector();
 }
 
+/** Creates the chart (sunburst or treemap) on a fresh canvas. */
+function createChart() {
+  chart?.destroy?.();
+  const host = $('#chart-host');
+  const old = $('#chart');
+  const canvas = document.createElement('canvas');
+  canvas.id = 'chart';
+  old.replaceWith(canvas);
+  const View = state.chartView === 'treemap' ? Treemap : Sunburst;
+  host.closest('.chart-wrap').classList.toggle('view-treemap', state.chartView === 'treemap');
+  chart = new View(canvas, {
+    rings: rings(),
+    animate: animationsOn(),
+    hiddenLabel: t('hidden_space'),
+    formatSize: (n) => bytes(n),
+    canGoUp: () => state.focusId !== state.rootId,
+    onGeometry: positionCenter,
+    onHover: onChartHover,
+    onClick: (node) => {
+      if (node.id < 0) return;
+      if (node.kind === 'dir' && node.has_children) zoomIn(node.id);
+      else highlightRow(node.id, true);
+    },
+    onDblClick: (node) => {
+      if (node.id >= 0 && node.kind !== 'dir' && node.kind !== 'hidden') api.revealNode(node.id).catch((e) => toast(errText(e), 'err'));
+    },
+    onCenterClick: goUp,
+    onContext: (node, e) => showMenu(node, e),
+    onDragStart: (node, e) => beginDrag(node, e),
+  });
+  chart.setMode(state.colorMode);
+  syncChartTheme();
+  document.querySelectorAll('#viewmode button').forEach((b) => b.classList.toggle('active', b.dataset.view === state.chartView));
+}
+
+/** Switches between the sunburst and the treemap, keeping the folder that is open. */
+function setChartView(view) {
+  state.chartView = view;
+  if (document.body.dataset.screen !== 'result' || !$('#chart-host')) return;
+  createChart();
+  if (state.view) chart.setData(state.view.root, 'pop');
+  renderCenter();
+}
+
+/** Loads the comparison with the previous scan once per scan. */
+function ensureComparison() {
+  if (!state.result?.previous_ms) return Promise.resolve(null);
+  if (state.compare) return Promise.resolve(state.compare);
+  if (state.compareLoading) return state.compareLoading;
+  const token = state.resultToken;
+  state.compareLoading = api
+    .loadComparison()
+    .then((c) => {
+      if (token !== state.resultToken) return null;
+      state.compare = c;
+      return c;
+    })
+    .catch((e) => {
+      if (token === state.resultToken) toast(errText(e), 'err');
+      return null;
+    })
+    .finally(() => {
+      if (token === state.resultToken) state.compareLoading = null;
+    });
+  return state.compareLoading;
+}
+
 function clearSearch(refresh = true) {
   const input = $('#search-input');
   if (input) input.value = '';
@@ -579,11 +683,26 @@ function clearSearch(refresh = true) {
   if (refresh) refreshPanel();
 }
 
-function setColorMode(mode) {
+async function setColorMode(mode) {
+  if (mode === 'change' && !state.result?.previous_ms) mode = 'folder';
   state.colorMode = mode;
-  setPref('colorMode', mode);
+  if (mode !== 'change') setPref('colorMode', mode);
+  document.querySelectorAll('#colormode button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+    if (b.dataset.mode === 'change') {
+      b.disabled = !state.result?.previous_ms;
+      b.title = b.disabled ? t('color_change_unavailable') : '';
+    }
+  });
+  renderStatus();
+  if (mode === 'change' && !state.compare) {
+    await ensureComparison();
+    if (state.colorMode !== 'change') return;
+    // Fetch the view again: it now carries the changes.
+    if (state.view) await navigate(state.focusId, 'none');
+  }
   chart?.setMode(mode);
-  document.querySelectorAll('#colormode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  renderCenter();
   // Row colors depend on the chart colors.
   requestAnimationFrame(() => refreshPanel());
   renderCollector();
@@ -594,6 +713,11 @@ function showResult() {
   renderResultShell();
   setColorMode(state.colorMode);
   navigate(state.rootId, 'sweep');
+  // Compare with the previous scan in the background.
+  ensureComparison().then((c) => {
+    if (!c || document.body.dataset.screen !== 'result') return;
+    if (state.view && state.colorMode !== 'change') navigate(state.focusId, 'none');
+  });
 }
 
 function positionCenter(geom) {
@@ -620,10 +744,11 @@ function renderCenter(node = null, { hoverCenter = false } = {}) {
   else sub = '';
   if (node && node.kind === 'group') sub = `${count(node.items)} · ${percent(node.size, focus.size)}`;
   const fs = Math.max(18, (chart?.geom?.r0 || 100) * 0.3);
+  const delta = state.colorMode === 'change' && n.delta != null ? `<div class="center-delta ${changeClass(n)}">${esc(n.new ? t('change_new') : signedBytes(n.delta))}</div>` : '';
   el.innerHTML = `
     <div class="center-name">${esc(displayName(n))}</div>
     <div class="center-size" style="font-size:${fs}px">${esc(num)}<span class="unit">${esc(unit)}</span></div>
-    <div class="center-sub">${esc(sub)}</div>
+    ${delta || `<div class="center-sub">${esc(sub)}</div>`}
     <div class="center-up">${icon('up')}${esc(t('go_up_hint'))}</div>`;
   el.classList.toggle('can-up', state.focusId !== state.rootId);
   el.classList.toggle('hovering', hoverCenter);
@@ -667,7 +792,10 @@ function renderStatus() {
     html += `<span class="status-warn">${icon('lock')}${esc(t('unreadable', { n: count(stats.unreadable) }))}</span>`;
     if (isMac()) html += `<button class="status-link" id="fda" type="button">${esc(t('grant_access'))}</button>`;
   }
-  html += `<span class="tip">${esc(t('shortcuts'))}</span>`;
+  if (state.colorMode === 'change') {
+    const key = (c, label) => `<span><i style="background:${css(CHANGE_COLORS[c])}"></i>${esc(t(label))}</span>`;
+    html += `<span class="change-legend">${key('up', 'legend_up')}${key('down', 'legend_down')}${key('new', 'legend_new')}</span>`;
+  } else html += `<span class="tip">${esc(t('shortcuts'))}</span>`;
   el.innerHTML = html;
   $('#fda')?.addEventListener('click', () => api.openExternal(FDA_URL).catch((e) => toast(errText(e), 'err')));
 }
@@ -736,23 +864,29 @@ function renderPanelHead() {
 
 // ------------------------------------------------------------------ side panel
 
-function rowHtml(item, { total, sub = null, showPct = true }) {
+function rowHtml(item, { total, sub = null, showPct = true, meta = null, pct = null, barColor = null }) {
   const color = colorFor(item);
   const isDir = item.kind === 'dir';
   const glyphIcon = item.kind === 'group' ? 'layers' : item.kind === 'hidden' ? 'lock' : isDir ? 'folder' : 'file';
   const clickable = item.id >= 0 && item.kind !== 'hidden';
-  const pct = total ? Math.min(1, item.size / total) : 0;
+  const share = pct ?? (total ? Math.min(1, item.size / total) : 0);
   const collected = state.collector.has(item.id) ? ' collected' : '';
   return `
     <div class="row${clickable ? ' clickable' : ''}${collected}" data-id="${item.id}">
-      <div class="bar" style="--pct:${pct};background:${color}"></div>
+      <div class="bar" style="--pct:${share};background:${barColor || color}"></div>
       <div class="glyph${item.kind === 'group' ? ' group' : ''}" style="background:${color}">${icon(glyphIcon)}</div>
       <div class="label">
         <div class="name" title="${esc(displayName(item))}">${esc(displayName(item))}</div>
         ${sub ? `<div class="sub" title="${esc(sub)}">${esc(sub)}</div>` : ''}
       </div>
-      <div class="meta"><div class="size">${esc(bytes(item.size))}</div>${showPct ? `<div class="pct">${esc(percent(item.size, total))}</div>` : ''}</div>
+      <div class="meta">${meta ?? `<div class="size">${esc(bytes(item.size))}</div>${showPct ? `<div class="pct">${esc(percent(item.size, total))}</div>` : ''}`}</div>
     </div>`;
+}
+
+const AGES = [0, 90, 180, 365, 730];
+
+function emptyState(ic, title, text) {
+  return `<div class="empty-state">${icon(ic)}${title ? `<b>${esc(title)}</b>` : ''}<p>${esc(text)}</p></div>`;
 }
 
 async function refreshPanel() {
@@ -780,12 +914,31 @@ async function refreshPanel() {
         ? items.map((h) => rowHtml(h, { total, sub: h.kind === 'dir' ? itemsLabel(h.items) : null })).join('')
         : `<div class="empty">${esc(t('empty_folder'))}</div>`;
     } else if (state.tab === 'largest') {
-      const hits = await api.largestFiles(id, 150);
+      const hits = await api.largestFiles(id, 150, state.ageDays);
       if (token !== state.panelToken) return;
       hits.forEach((h) => state.rows.set(h.id, h));
-      body.innerHTML = hits.length
-        ? hits.map((h) => rowHtml(h, { total, sub: h.rel_path })).join('')
-        : `<div class="empty">${esc(t('empty_folder'))}</div>`;
+      const select = `
+        <div class="list-tools">
+          <select id="age-filter" aria-label="${esc(t('age_any'))}">
+            ${AGES.map((d) => `<option value="${d}"${d === state.ageDays ? ' selected' : ''}>${esc(t(d ? `age_${d}` : 'age_any'))}</option>`).join('')}
+          </select>
+        </div>`;
+      const sub = (h) => [h.rel_path, h.modified_ms ? t('modified_on', { date: shortDate(h.modified_ms) }) : ''].filter(Boolean).join(' · ');
+      let list;
+      if (hits.length) list = hits.map((h) => rowHtml(h, { total, sub: sub(h) })).join('');
+      else if (state.ageDays && state.result && !state.result.file_dates) list = emptyState('file', '', t('age_unknown'));
+      else list = `<div class="empty">${esc(t(state.ageDays ? 'age_none' : 'empty_folder'))}</div>`;
+      body.innerHTML = select + list;
+      $('#age-filter').addEventListener('change', (e) => {
+        state.ageDays = +e.target.value;
+        refreshPanel();
+      });
+    } else if (state.tab === 'changes') {
+      await renderChanges(body, token, id);
+    } else if (state.tab === 'dupes') {
+      renderDuplicates(body);
+    } else if (state.tab === 'cleanup') {
+      await renderCleanup(body, token);
     } else {
       const tt = await api.typeTotals(id);
       if (token !== state.panelToken) return;
@@ -794,6 +947,232 @@ async function refreshPanel() {
     }
   } catch (e) {
     if (token === state.panelToken) body.innerHTML = `<div class="empty">${esc(errText(e))}</div>`;
+  }
+}
+
+// ------------------------------------------------------------------ changes
+
+async function renderChanges(body, token, id) {
+  if (!state.result?.previous_ms) {
+    body.innerHTML = emptyState('trend', t('changes_none_title'), t('changes_none'));
+    return;
+  }
+  if (!state.compare) {
+    body.innerHTML = `<div class="empty">${esc(t('changes_loading'))}</div>`;
+    await ensureComparison();
+    if (token !== state.panelToken) return;
+  }
+  const ch = await api.changes(id, 500);
+  if (token !== state.panelToken) return;
+  if (!ch) {
+    body.innerHTML = emptyState('trend', t('changes_none_title'), t('changes_none'));
+    return;
+  }
+  ch.items.forEach((h) => state.rows.set(h.id, h));
+  const cls = changeClass({ delta: ch.delta });
+  const head = `
+    <div class="chg-head">
+      <div class="chg-delta ${cls}">${esc(signedBytes(ch.delta))}</div>
+      <div class="chg-sub">${esc(t('changes_since', { when: shortDate(ch.previous_ms, true) }))}<br>${esc(t('changes_was', { before: bytes(Math.max(0, ch.size - ch.delta)), now: bytes(ch.size) }))}</div>
+      ${state.colorMode === 'change' ? '' : `<button class="link-btn" id="chg-color" type="button">${icon('trend')} ${esc(t('changes_color'))}</button>`}
+    </div>`;
+  const max = Math.max(1, ...ch.items.map((h) => Math.abs(h.delta)));
+  const rows = ch.items
+    .map((h) => {
+      const c = changeClass(h);
+      const meta = `<div class="size delta ${c}">${esc(h.new ? `${t('change_new')} · ${bytes(h.size)}` : signedBytes(h.delta))}</div><div class="pct">${esc(bytes(h.size))}</div>`;
+      return rowHtml(h, { total: ch.size, meta, pct: Math.abs(h.delta) / max, barColor: css(CHANGE_COLORS[c] || CHANGE_COLORS.same) });
+    })
+    .join('');
+  body.innerHTML = head + (rows || `<div class="empty">${esc(t('changes_nothing'))}</div>`);
+  $('#chg-color')?.addEventListener('click', () => setColorMode('change'));
+}
+
+// ------------------------------------------------------------------ duplicates
+
+const DUP_SIZES = [1_000_000, 10_000_000, 100_000_000];
+
+function renderDuplicates(body) {
+  const d = state.dup;
+  const folder = displayName(state.view.root);
+  if (d.running) {
+    body.innerHTML = `
+      <div class="dup-run">
+        <b>${esc(t('dup_title'))}</b>
+        <p class="dup-phase" id="dup-phase"></p>
+        <div class="progress"><div id="dup-bar"></div></div>
+        <button class="btn btn-sm" id="dup-cancel" type="button">${icon('x')}${esc(t('cancel'))}</button>
+      </div>`;
+    updateDupProgress();
+    $('#dup-cancel').addEventListener('click', () => api.cancelDuplicates().catch(() => {}));
+    return;
+  }
+  if (!d.result) {
+    body.innerHTML = `
+      <div class="dup-intro">
+        ${icon('copy')}
+        <b>${esc(t('dup_title'))}</b>
+        <p>${esc(t('dup_intro', { folder }))}</p>
+        <label class="dup-min">${esc(t('dup_min'))}
+          <select id="dup-min">${DUP_SIZES.map((v) => `<option value="${v}"${v === d.minSize ? ' selected' : ''}>${esc(bytes(v))}</option>`).join('')}</select>
+        </label>
+        <button class="btn primary" id="dup-start" type="button">${icon('search')}${esc(t('dup_start'))}</button>
+      </div>`;
+    $('#dup-min').addEventListener('change', (e) => (state.dup.minSize = +e.target.value));
+    $('#dup-start').addEventListener('click', startDuplicates);
+    return;
+  }
+  const r = d.result;
+  if (!r.groups.length) {
+    body.innerHTML = emptyState('check', '', t('dup_none', { folder: d.rootName })) + `<div class="dup-again"><button class="btn btn-sm" id="dup-again" type="button">${icon('refresh')}${esc(t('dup_again'))}</button></div>`;
+    $('#dup-again').addEventListener('click', () => {
+      state.dup.result = null;
+      refreshPanel();
+    });
+    return;
+  }
+  const groups = r.groups
+    .map((g, i) => {
+      g.files.forEach((f) => state.rows.set(f.id, { id: f.id, name: f.name, size: f.size, kind: 'file', cat: f.cat }));
+      const files = g.files
+        .map((f) => rowHtml({ id: f.id, name: f.name, size: f.size, kind: 'file', cat: f.cat }, { total: 0, sub: `\u200e${f.path.slice(0, Math.max(0, f.path.length - f.name.length - 1))}\u200e`, showPct: false }))
+        .join('');
+      return `
+        <div class="dup-group">
+          <div class="dup-head">
+            <span class="dup-count">${g.files.length} × ${esc(bytes(g.size))}</span>
+            <span class="dup-extra">${esc(t('dup_extra', { size: bytes(g.wasted) }))}</span>
+            <button class="btn btn-sm ghost" type="button" data-dup="${i}">${esc(t('dup_collect'))}</button>
+          </div>
+          ${files}
+        </div>`;
+    })
+    .join('');
+  body.innerHTML = `
+    <div class="dup-summary">
+      <b>${esc(r.total_groups === 1 ? t('dup_summary_one', { size: bytes(r.wasted) }) : t('dup_summary', { n: count(r.total_groups), size: bytes(r.wasted) }))}</b>
+      <p>${esc(r.total_groups > r.groups.length ? `${t('dup_shown', { n: count(r.groups.length) })} ` : '')}${esc(t('dup_keep_hint'))}</p>
+      <div class="dup-actions">
+        <button class="btn btn-sm primary" id="dup-all" type="button">${icon('trash')}${esc(t('dup_collect_all'))}</button>
+        <button class="btn btn-sm" id="dup-again" type="button">${icon('refresh')}${esc(t('dup_again'))}</button>
+      </div>
+    </div>
+    ${groups}`;
+  const extras = (g) => g.files.slice(1).map((f) => f.id);
+  $('#dup-all').addEventListener('click', () => addManyToCollector(r.groups.flatMap(extras)));
+  $('#dup-again').addEventListener('click', () => {
+    state.dup.result = null;
+    refreshPanel();
+  });
+  body.querySelectorAll('[data-dup]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    addManyToCollector(extras(r.groups[+b.dataset.dup]));
+  }));
+}
+
+async function startDuplicates() {
+  state.dup = { ...state.dup, running: true, progress: null, result: null, rootName: displayName(state.view.root), job: null };
+  refreshPanel();
+  try {
+    const job = await api.findDuplicates(state.focusId, state.dup.minSize);
+    state.dup.job = job;
+    // The search can finish before its job id arrives here.
+    if (state.lastDupDone?.job === job) onDupDone(state.lastDupDone);
+  } catch (e) {
+    state.dup.running = false;
+    toast(errText(e), 'err');
+    refreshPanel();
+  }
+}
+
+function updateDupProgress() {
+  const p = state.dup.progress;
+  const phase = $('#dup-phase');
+  const bar = $('#dup-bar');
+  if (!phase || !bar) return;
+  if (!p) {
+    phase.textContent = t('preparing');
+    bar.style.width = '4%';
+    return;
+  }
+  const frac = p.phase === 3 && p.bytes_total ? p.bytes_done / p.bytes_total : p.files_total ? p.files_done / p.files_total : 0;
+  phase.textContent = `${t(`dup_phase_${p.phase || 1}`)} ${p.files_total ? t('dup_progress', { done: count(p.files_done), total: count(p.files_total) }) : ''}`;
+  // Three phases share the bar: sizes, edges, contents.
+  const base = [0, 0, 0.15, 0.3][p.phase || 1];
+  const span = [0, 0.15, 0.15, 0.7][p.phase || 1];
+  bar.style.width = `${Math.max(4, (base + span * Math.min(1, frac)) * 100)}%`;
+}
+
+function onDupProgress(p) {
+  if (p.job !== state.dup.job || !state.dup.running) return;
+  state.dup.progress = p;
+  if (state.tab === 'dupes') updateDupProgress();
+}
+
+function onDupDone(d) {
+  state.lastDupDone = d;
+  if (d.job !== state.dup.job && !(d.cancelled && state.dup.running)) return;
+  state.dup.running = false;
+  state.dup.result = d.cancelled ? null : d;
+  if (state.tab === 'dupes' && document.body.dataset.screen === 'result') refreshPanel();
+}
+
+// ------------------------------------------------------------------ cleanup
+
+async function renderCleanup(body, token) {
+  if (!state.suggest) {
+    body.innerHTML = `<div class="empty">${esc(t('preparing'))}</div>`;
+    const s = await api.cleanupSuggestions();
+    if (token !== state.panelToken) return;
+    state.suggest = s;
+  }
+  const list = state.suggest;
+  const intro = `<p class="clean-intro">${esc(t(isWindows() ? 'clean_intro_win' : 'clean_intro'))}</p>`;
+  if (!list.length) {
+    body.innerHTML = emptyState('broom', '', t('clean_none'));
+    return;
+  }
+  body.innerHTML =
+    intro +
+    list
+      .map((sg, i) => {
+        const key = sg.key === 'trash' && isWindows() ? 'trash_win' : sg.key;
+        const countText = sg.key !== 'node_modules' ? itemsLabel(sg.count) : sg.count === 1 ? t('clean_folders_one') : t('clean_folders', { n: count(sg.count) });
+        return `
+        <div class="sugg">
+          <div class="sugg-icon">${icon(sg.info ? 'trash' : sg.key === 'old_downloads' ? 'download' : sg.key === 'node_modules' ? 'layers' : 'broom')}</div>
+          <div class="sugg-text">
+            <b>${esc(t(`s_${key}`))}</b>
+            <p>${esc(t(`s_${key}_d`))}</p>
+            <span class="sugg-meta"><b>${esc(bytes(sg.size))}</b> · ${esc(countText)}</span>
+          </div>
+          <div class="sugg-actions">
+            ${sg.focus != null ? `<button class="btn btn-sm ghost" type="button" data-show="${i}">${esc(t('clean_show'))}</button>` : ''}
+            ${sg.info ? '' : `<button class="btn btn-sm" type="button" data-collect="${i}">${icon('trash')}${esc(t('clean_collect'))}</button>`}
+          </div>
+        </div>`;
+      })
+      .join('');
+  body.querySelectorAll('[data-show]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const sg = list[+b.dataset.show];
+      navigate(sg.focus, sg.focus === state.focusId ? 'none' : 'pop');
+    }),
+  );
+  body.querySelectorAll('[data-collect]').forEach((b) => b.addEventListener('click', () => addManyToCollector(list[+b.dataset.collect].ids)));
+}
+
+// ------------------------------------------------------------------ export
+
+async function exportCsv() {
+  if (!state.view) return;
+  const day = new Date().toISOString().slice(0, 10);
+  const name = `2DriveScan ${displayName(state.view.root).replace(/[\\/:*?"<>|]+/g, '-')} ${day}.csv`;
+  try {
+    const saved = await api.exportCsv(state.focusId, name);
+    if (saved) toast(t('export_done', { name: saved.split(/[\\/]/).pop() }));
+  } catch (e) {
+    toast(errText(e), 'err');
   }
 }
 
@@ -884,11 +1263,21 @@ function showTooltip(node, e) {
   let hint = '';
   if (node.kind === 'hidden') hint = `<div class="tt-hint">${esc(t('hidden_space_hint'))}</div>`;
   const sub = node.kind === 'group' ? t('smaller_items', { n: count(node.items) }) : node.kind === 'dir' ? itemsLabel(node.items) : '';
+  const change =
+    node.delta != null && state.compare
+      ? `<div class="tt-change ${changeClass(node)}">${esc(
+          node.new
+            ? t('change_new')
+            : node.delta
+              ? `${signedBytes(node.delta)} ${t('changes_since', { when: shortDate(state.compare.previous_ms) })}`
+              : t('unchanged_since', { when: shortDate(state.compare.previous_ms) }),
+        )}</div>`
+      : '';
   tip.innerHTML = `
     <div class="tt-name"><span class="tt-dot" style="background:${colorFor(node)}"></span>${esc(node.kind === 'group' ? t('smaller_items', { n: count(node.items) }) : displayName(node))}</div>
     <div class="tt-size">${esc(bytes(node.size))}</div>
     <div class="tt-sub">${esc([t('of_parent', { pct: percent(node.size, focus.size), parent: displayName(focus) }), node.kind === 'group' ? '' : sub].filter(Boolean).join(' · '))}</div>
-    ${hint}`;
+    ${change}${hint}`;
   tip.hidden = false;
   const pad = 16;
   const r = tip.getBoundingClientRect();
@@ -924,6 +1313,7 @@ function showMenu(item, e) {
   if (!isRoot) {
     entries.push(null);
     entries.push(inCollector ? ['uncollect', 'x', t('remove_from_collector')] : ['collect', 'trash', t('add_to_collector')]);
+    if (item.kind === 'dir') entries.push(['exclude', 'ban', t('exclude')]);
   }
   menu.innerHTML =
     `<div class="ctx-title">${esc(displayName(item))} · ${esc(bytes(item.size))}</div>` +
@@ -961,6 +1351,13 @@ function showMenu(item, e) {
         case 'uncollect':
           removeFromCollector(item.id);
           break;
+        case 'exclude': {
+          const path = await api.nodePath(item.id);
+          const list = getList('excluded');
+          if (!list.includes(path)) setList('excluded', [...list, path].sort());
+          toast(t('excluded_toast'));
+          break;
+        }
       }
     } catch (err) {
       toast(errText(err), 'err');
@@ -1019,6 +1416,14 @@ async function addToCollector(item) {
   await resolveCollector();
 }
 
+/** Adds many items (a suggestion, extra copies) to the Collector at once. */
+async function addManyToCollector(ids) {
+  const fresh = ids.filter((id) => id >= 0 && id !== state.rootId && !state.collector.has(id));
+  for (const id of fresh) state.collector.set(id, { id, name: '', size: 0, kind: 'file', cat: 7, covered: false });
+  await resolveCollector();
+  if (fresh.length) toast(t('collected_many', { n: count(fresh.length) }));
+}
+
 function removeFromCollector(id) {
   state.collector.delete(id);
   resolveCollector();
@@ -1058,10 +1463,12 @@ function renderCollector() {
   }
   const total = collectorTotal();
   const live = items.filter((i) => !i.covered).length;
+  const SHOWN = 120;
   el.innerHTML = `
     <div class="collector-icon">${icon('trash')}<span class="badge">${live}</span></div>
     <div class="collector-items">
       ${items
+        .slice(0, SHOWN)
         .map(
           (it) => `
         <div class="citem${it.covered ? ' covered' : ''}" title="${esc(it.path || it.name)}">
@@ -1072,6 +1479,7 @@ function renderCollector() {
         </div>`,
         )
         .join('')}
+      ${items.length > SHOWN ? `<div class="citem more">${esc(t('collector_more', { n: count(items.length - SHOWN) }))}</div>` : ''}
     </div>
     <div class="collector-actions">
       <div class="collector-total"><b>${esc(bytes(total))}</b><span>${esc(t('collector_total', { n: live, size: '' }).replace(/ · $/, ''))}</span></div>
@@ -1132,6 +1540,15 @@ function confirmTrash() {
         toast(t('trash_done', { size: bytes(report.freed) }));
       }
       await resolveCollector();
+      state.suggest = null;
+      if (state.dup.result) {
+        const gone = new Set(report.removed);
+        const groups = state.dup.result.groups
+          .map((g) => ({ ...g, files: g.files.filter((f) => !gone.has(f.id)) }))
+          .filter((g) => g.files.length > 1)
+          .map((g) => ({ ...g, wasted: g.size * (g.files.length - 1) }));
+        state.dup.result = { ...state.dup.result, groups, total_groups: groups.length, wasted: groups.reduce((a, g) => a + g.wasted, 0) };
+      }
       renderStatus();
       renderUsage();
       navigate(state.focusId, 'pop');
@@ -1406,6 +1823,8 @@ async function init() {
   await listen('scan-done', onDone);
   await listen('scan-failed', onFailed);
   await listen('update-progress', onUpdateProgress);
+  await listen('dup-progress', onDupProgress);
+  await listen('dup-done', onDupDone);
   matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', (ev) => {
     if (getPref('theme') === 'system') applyTheme(ev.matches ? 'light' : 'dark');
   });

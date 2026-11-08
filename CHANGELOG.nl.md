@@ -2,6 +2,30 @@
 
 Alle belangrijke wijzigingen in 2DriveScan. De Engelse versie staat in `CHANGELOG.md`.
 
+## 0.5.0 – 2026-11-08
+
+- **Wat er veranderd is sinds de vorige scan.** 2DriveScan bewaart de vorige scan van elke schijf of map en
+  vergelijkt: het nieuwe tabblad **Veranderingen** toont wat er gegroeid, gekrompen of nieuw is, en
+  **Veranderingen** kleurt de grafiek daarnaar (rood gegroeid, turquoise gekrompen, roze nieuw). Ook de tooltips
+  tonen de verandering.
+- **Dubbele bestanden.** Het tabblad **Duplicaten** zoekt bestanden met precies dezelfde inhoud onder de open map:
+  eerst op grootte, dan op begin en eind, dan op de hele inhoud. Ook hernoemde kopieën worden gevonden; harde
+  links tellen niet als kopie. Verzamel de extra kopieën van één groep of van alle groepen; het origineel blijft.
+- **Opruimsuggesties.** Het tabblad **Opruimen** toont plekken waar ruimte blijft hangen: app-caches,
+  logbestanden, Xcode-builddata en -archieven, simulatorcaches, back-ups van iPhone en iPad, caches van
+  npm/Gradle/Cargo, `node_modules`-mappen, downloads die 3 maanden niet zijn gewijzigd, en de prullenmand. Met één
+  klik in de verzamelbak; er gaat niets weg zonder jouw bevestiging.
+- **Treemap.** Wissel de grafiek tussen de sunburst en een treemap (geneste vakken), naast de kleurknoppen of in
+  de instellingen.
+- **Leeftijdsfilter.** De grootste bestanden kun je beperken tot bestanden die 3 maanden, 6 maanden, 1 of 2 jaar
+  niet zijn gewijzigd, en ze tonen wanneer ze voor het laatst zijn gewijzigd.
+- **Mappen uitsluiten.** Klik met rechts op een map en kies **Uitsluiten van scans**, of beheer de lijst in
+  Instellingen › Scans. Bij een hele schijf telt uitgesloten ruimte als verborgen ruimte.
+- **Exporteren als CSV.** De nieuwe knop naast de mapnaam bewaart de mappen (en bestanden vanaf 1 MB) met
+  groottes en datums als CSV-bestand.
+
+Bewaarde scans bevatten nu bestandsdatums; de eerste scan na de update leest daarom alles één keer opnieuw.
+
 ## 0.4.0 – 2026-11-04
 
 - **Instellingen.** Een nieuw instellingenvenster (het tandwiel in de titelbalk, of Ctrl/⌘ + ,) met:

@@ -19,18 +19,26 @@
 
 ## Features
 
-- **Interactive sunburst.** Every ring is a folder level. Hover to inspect, click to zoom in, click the
-  center to go back. Transitions are animated so you never lose your place.
+- **Interactive sunburst or treemap.** Every ring (or box) is a folder level. Hover to inspect, click to zoom
+  in, click the center to go back. Transitions are animated so you never lose your place.
 - **Fast.** A parallel scanner written in Rust reads hundreds of thousands of files per second (on macOS with
   `getattrlistbulk`). It counts the space files actually take on disk (sparse files and hard links are handled
   correctly), stays on one volume and never downloads files that only live in iCloud or other cloud folders.
 - **Scans are saved.** Reopen the last scan of a drive instantly. A rescan only reads folders that changed,
   usually in seconds, and an interrupted scan continues where it stopped.
+- **See what changed.** Every scan is compared with the previous one: the Changes tab and the "Changes" colors
+  show what grew, what shrank and what is new.
+- **Duplicate files.** Finds files with identical contents (compared by size, then by checksum, not by name) and
+  collects the extra copies, keeping one.
+- **Cleanup suggestions.** Caches, build output (Xcode DerivedData, `node_modules`), old phone backups, old
+  downloads and the Trash, with their sizes. Only suggestions: you review everything in the Collector.
 - **Hidden space.** When you scan a whole drive, used space that no file accounts for (snapshots, swap, system
   files, folders you cannot read) is shown as its own segment, so the numbers add up.
 - **Find the big stuff.** The side panel has a sorted folder list, the largest files anywhere below the
   current folder, a file type breakdown (video, images, archives, code…) and instant search.
-- **Color by folder or by file type.** Switch modes to see at a glance what kind of data fills a folder.
+- **Color by folder, file type or change.** Switch modes to see at a glance what kind of data fills a folder.
+- **Your scan, your way.** Filter the largest files by age, exclude folders from scans, and export folders and
+  sizes as CSV.
 - **Collector.** Drag items from the chart or the list into the Collector, review them, and move them to the
   Trash or Recycle Bin in one go. Nothing is ever deleted permanently, so you can always restore items.
 - **Native everywhere.** Light and dark mode, English and Dutch, reveal in Finder, Explorer or your file
@@ -39,7 +47,9 @@
   updates, in one window (`Ctrl/⌘ + ,`).
 - **Automatic updates.** One click installs a new version; updates are signed and verified.
 
-![Light mode with file type colors](docs/screenshots/types-light.png)
+![Colored by what changed since the previous scan](docs/screenshots/changes-dark.png)
+
+![Treemap in light mode with cleanup suggestions](docs/screenshots/treemap-light.png)
 
 ## Download
 

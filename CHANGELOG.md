@@ -3,6 +3,29 @@
 All notable changes to 2DriveScan. The website shows this file on its changelog page;
 the Dutch version lives in `CHANGELOG.nl.md`.
 
+## 0.5.0 – 2026-11-08
+
+- **What changed since the last scan.** 2DriveScan keeps the previous scan of each drive or folder and compares:
+  the new **Changes** tab lists what grew, shrank or is new, and **Changes** colors the chart by it (red grew,
+  turquoise shrank, pink new). Tooltips show the change too.
+- **Duplicate files.** The **Duplicates** tab finds files with exactly the same contents below the open folder,
+  comparing sizes, then the start and end, then the whole contents. Renamed copies are found as well; hard links
+  are not counted as copies. Collect the extra copies of one group or all groups; the original stays.
+- **Cleanup suggestions.** The **Clean up** tab lists places where space piles up: app caches, logs, Xcode build
+  data and archives, simulator caches, iPhone and iPad backups, npm/Gradle/Cargo caches, `node_modules` folders,
+  downloads not changed in 3 months, and the Trash. Add one to the Collector in a click; nothing is removed
+  without your confirmation.
+- **Treemap.** Switch the chart between the sunburst and a treemap (nested boxes), next to the color buttons or
+  in Settings.
+- **Age filter.** Largest files can be limited to files not changed in 3 months, 6 months, 1 or 2 years, and show
+  when each file last changed.
+- **Exclude folders.** Right-click a folder and choose **Exclude from scans**, or manage the list in Settings ›
+  Scans. On a whole drive, excluded space counts as hidden space.
+- **Export as CSV.** The new button next to the folder name saves its folders (and files of 1 MB or more) with
+  sizes and dates as a CSV file.
+
+Saved scans now include file dates, so the first scan after updating reads everything once.
+
 ## 0.4.0 – 2026-11-04
 
 - **Settings.** A new settings window (the gear in the title bar, or Ctrl/⌘ + ,) with:

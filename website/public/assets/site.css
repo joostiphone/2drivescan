@@ -675,6 +675,10 @@ p {
 .feature-collector { background: linear-gradient(135deg, #ff5c7a, #ff8a4c); box-shadow: 0 10px 26px rgba(255, 92, 122, 0.28); }
 .feature-native { background: linear-gradient(135deg, #b64dff, #ff4fa3); }
 .feature-private { background: linear-gradient(135deg, #7c5cff, #3ddbd9); }
+.feature-changes { background: linear-gradient(135deg, #ff6b5a, #ff4fa3); box-shadow: 0 10px 26px rgba(255, 107, 90, 0.26); }
+.feature-duplicates { background: linear-gradient(135deg, #4dabf7, #b197fc); }
+.feature-cleanup { background: linear-gradient(135deg, #69db7c, #3ddbd9); box-shadow: 0 10px 26px rgba(105, 219, 124, 0.24); }
+.feature-tools { background: linear-gradient(135deg, #ffa94d, #ff6b6b); box-shadow: 0 10px 26px rgba(255, 169, 77, 0.24); }
 
 .feature-icon .icon {
   width: 22px;
@@ -750,7 +754,7 @@ p {
   box-shadow: var(--shadow);
 }
 
-.shot:nth-child(2) {
+.shot:nth-child(even) {
   margin-top: 60px;
 }
 
@@ -1908,7 +1912,7 @@ p {
   .showcase {
     grid-template-columns: 1fr;
   }
-  .shot:nth-child(2) {
+  .shot:nth-child(even) {
     margin-top: 0;
   }
 }

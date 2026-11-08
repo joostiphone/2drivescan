@@ -24,6 +24,14 @@ export const CATEGORY_COLORS = [
 export const GROUP_COLOR = [118, 124, 150];
 export const HIDDEN_COLOR = [70, 74, 100];
 
+/** Colors for "color by changes": grew, shrank, new, unchanged. */
+export const CHANGE_COLORS = {
+  up: hex('#ff6b5a'),
+  down: hex('#3ddbd9'),
+  new: hex('#ff4fa3'),
+  same: [84, 90, 120],
+};
+
 export function mix(a, b, t) {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
@@ -51,12 +59,22 @@ export function css(c, alpha = 1) {
  * @param node   view node ({kind, cat})
  * @param pos    angular mid position 0..1 (folder mode)
  * @param depth  ring depth (1 = innermost)
- * @param mode   'folder' | 'type'
+ * @param mode   'folder' | 'type' | 'change' (uses node.delta / node.new)
  */
 export function nodeColor(node, pos, depth, mode) {
   if (node.kind === 'group') return GROUP_COLOR;
   if (node.kind === 'hidden') return HIDDEN_COLOR;
   const d = Math.max(0, depth - 1);
+  if (mode === 'change') {
+    if (node.delta == null) return lighten(CHANGE_COLORS.same, d * 0.04);
+    if (node.new) return lighten(CHANGE_COLORS.new, d * 0.04);
+    if (!node.delta) return lighten(CHANGE_COLORS.same, d * 0.05);
+    // Strength: how much of the item changed (square root, so small changes still show).
+    const before = Math.max(1, node.size - node.delta);
+    const t = Math.min(1, Math.sqrt(Math.abs(node.delta) / Math.max(before, node.size)) * 1.15);
+    const target = node.delta > 0 ? CHANGE_COLORS.up : CHANGE_COLORS.down;
+    return lighten(mix(CHANGE_COLORS.same, target, 0.25 + 0.75 * t), d * 0.04);
+  }
   if (mode === 'type') {
     const base = CATEGORY_COLORS[node.cat ?? 7] || CATEGORY_COLORS[7];
     return node.kind === 'dir' ? lighten(mix(base, [40, 44, 70], 0.12), d * 0.07) : lighten(base, d * 0.05);

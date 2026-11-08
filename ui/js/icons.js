@@ -38,6 +38,10 @@ export const icons = {
   globe: svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
   list: svg('<path d="M9 6h11M9 12h11M9 18h11M4.5 6h0M4.5 12h0M4.5 18h0"/>'),
   bug: svg('<rect x="7" y="8" width="10" height="12" rx="5"/><path d="M9 8V6a3 3 0 0 1 6 0v2M3 13h4M17 13h4M4 7l3 2M20 7l-3 2M4 19l3-2M20 19l-3-2M12 12v8"/>'),
+  trend: svg('<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>'),
+  grid: svg('<rect x="3" y="3" width="10" height="11" rx="1.5"/><rect x="15" y="3" width="6" height="7" rx="1.5"/><rect x="15" y="12" width="6" height="9" rx="1.5"/><rect x="3" y="16" width="10" height="5" rx="1.5"/>'),
+  broom: svg('<path d="M19 3 11.5 10.5"/><path d="M9.5 9.5c-2 .5-4 2-5 4l6 6c2-1 3.5-3 4-5z"/><path d="m6.5 16.5-2 2M9 18.5l-1.5 2"/>'),
+  ban: svg('<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>'),
   pie: svg('<path d="M21 12A9 9 0 1 1 12 3"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/>'),
 };
 

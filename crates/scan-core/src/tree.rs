@@ -45,9 +45,10 @@ pub struct Node {
     /// cloud-only folders and for folders an interrupted scan did not finish).
     /// Only complete folders are reused by a later scan.
     pub complete: bool,
-    /// Directories: modification time in nanoseconds since the Unix epoch, as
-    /// seen during the scan. It changes whenever an entry is added, removed or
-    /// renamed, which is what lets a rescan skip unchanged folders.
+    /// Modification time in nanoseconds since the Unix epoch, as seen during
+    /// the scan; 0 when unknown. For a folder it changes whenever an entry is
+    /// added, removed or renamed, which is what lets a rescan skip unchanged
+    /// folders. For files it is shown in lists and used by the age filter.
     pub mtime: i64,
     /// Children sorted by size, largest first.
     pub children: Vec<NodeId>,
@@ -92,6 +93,12 @@ pub struct ViewNode {
     /// Whether the node has children at all (even if they were pruned).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub has_children: bool,
+    /// Change in size since the previous scan (only when comparing).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delta: Option<i64>,
+    /// Not present in the previous scan (only when comparing).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub new: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<ViewNode>,
 }
@@ -106,6 +113,99 @@ pub struct ItemHit {
     pub cat: u8,
     /// Path relative to the node that was searched.
     pub rel_path: String,
+    /// Last modified, in milliseconds since the Unix epoch; 0 when unknown.
+    pub modified_ms: i64,
+}
+
+/// A direct child with its change since the previous scan.
+#[derive(Clone, Debug, Serialize)]
+pub struct ChangeItem {
+    pub id: NodeId,
+    pub name: String,
+    pub size: u64,
+    pub kind: &'static str,
+    pub cat: u8,
+    pub has_children: bool,
+    pub delta: i64,
+    pub new: bool,
+}
+
+/// Sizes of a tree's nodes in an earlier scan of the same folder, matched by
+/// path. Made by [`Tree::compare_with`].
+#[derive(Debug, Clone)]
+pub struct Comparison {
+    /// Indexed by node id of the current tree; [`NOT_BEFORE`] for nodes that
+    /// did not exist in the earlier scan.
+    previous: Vec<u64>,
+    /// When the earlier scan started, in milliseconds since the Unix epoch.
+    pub previous_ms: i64,
+}
+
+const NOT_BEFORE: u64 = u64::MAX;
+
+impl Comparison {
+    /// Size in the earlier scan; None when the node is new (or hidden space).
+    pub fn previous(&self, id: NodeId) -> Option<u64> {
+        self.previous
+            .get(id as usize)
+            .copied()
+            .filter(|&p| p != NOT_BEFORE)
+    }
+
+    /// Change in bytes since the earlier scan. New nodes count fully; hidden
+    /// space is left out (it is measured, not scanned).
+    pub fn delta(&self, tree: &Tree, id: NodeId) -> Option<i64> {
+        let node = tree.get(id)?;
+        if node.kind == Kind::Hidden {
+            return None;
+        }
+        let now = node.size.saturating_sub(tree.hidden_below(id)) as i64;
+        Some(now - self.previous(id).unwrap_or(0) as i64)
+    }
+
+    pub fn is_new(&self, tree: &Tree, id: NodeId) -> bool {
+        tree.get(id).is_some_and(|n| n.kind != Kind::Hidden) && self.previous(id).is_none()
+    }
+
+    /// Fills in `delta` and `new` on a view (and its children).
+    pub fn annotate(&self, tree: &Tree, view: &mut ViewNode) {
+        if view.id >= 0 {
+            let id = view.id as NodeId;
+            view.delta = self.delta(tree, id);
+            view.new = self.is_new(tree, id);
+        }
+        for c in &mut view.children {
+            self.annotate(tree, c);
+        }
+    }
+
+    /// Direct children of `id` that changed, biggest change first.
+    pub fn changes(&self, tree: &Tree, id: NodeId, limit: usize) -> Vec<ChangeItem> {
+        let Some(node) = tree.get(id) else {
+            return Vec::new();
+        };
+        let mut out: Vec<ChangeItem> = node
+            .children
+            .iter()
+            .filter_map(|&c| {
+                let n = tree.get(c)?;
+                let delta = self.delta(tree, c)?;
+                (delta != 0).then(|| ChangeItem {
+                    id: c,
+                    name: n.name.to_string(),
+                    size: n.size,
+                    kind: kind_str(n.kind),
+                    cat: n.category as u8,
+                    has_children: !n.children.is_empty(),
+                    delta,
+                    new: self.is_new(tree, c),
+                })
+            })
+            .collect();
+        out.sort_by_key(|c| Reverse(c.delta.unsigned_abs()));
+        out.truncate(limit);
+        out
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -136,6 +236,10 @@ pub struct Tree {
     /// cloud-only folders do not make a finished scan unfinished; they only
     /// keep their own folders from being reused (see [`Node::complete`]).
     pub(crate) finished: bool,
+    /// Files carry modification times (scans saved before version 0.5 do not).
+    file_dates: bool,
+    /// Folders the scan was told to skip.
+    excluded: Vec<PathBuf>,
 }
 
 impl Tree {
@@ -153,7 +257,25 @@ impl Tree {
             hidden: 0,
             scanned_at,
             finished,
+            file_dates: false,
+            excluded: Vec::new(),
         }
+    }
+
+    pub(crate) fn with_meta(mut self, file_dates: bool, excluded: Vec<PathBuf>) -> Self {
+        self.file_dates = file_dates;
+        self.excluded = excluded;
+        self
+    }
+
+    /// Whether files carry modification times.
+    pub fn has_file_dates(&self) -> bool {
+        self.file_dates
+    }
+
+    /// Folders the scan skipped on purpose.
+    pub fn excluded(&self) -> &[PathBuf] {
+        &self.excluded
     }
 
     /// False when the scan was interrupted; the tree then holds what was read
@@ -315,6 +437,8 @@ impl Tree {
             cat: n.category as u8,
             unreadable: n.unreadable,
             has_children: !n.children.is_empty(),
+            delta: None,
+            new: false,
             children: Vec::new(),
         }
     }
@@ -357,6 +481,8 @@ impl Tree {
                 cat: Category::Other as u8,
                 unreadable: false,
                 has_children: false,
+                delta: None,
+                new: false,
                 children: Vec::new(),
             });
         }
@@ -386,14 +512,17 @@ impl Tree {
                 cat: Category::Other as u8,
                 unreadable: false,
                 has_children: false,
+                delta: None,
+                new: false,
                 children: Vec::new(),
             });
         }
         out
     }
 
-    /// Iterates all live descendants of `id` (excluding `id` itself).
-    fn for_each_descendant(&self, id: NodeId, mut f: impl FnMut(NodeId, &Node)) {
+    /// Iterates all live descendants of `id` (excluding `id` itself), in no
+    /// particular order.
+    pub fn for_each_descendant(&self, id: NodeId, mut f: impl FnMut(NodeId, &Node)) {
         let mut stack: Vec<NodeId> = self.nodes[id as usize].children.clone();
         while let Some(c) = stack.pop() {
             let n = &self.nodes[c as usize];
@@ -407,12 +536,25 @@ impl Tree {
 
     /// The `limit` largest files below `id`.
     pub fn largest_files(&self, id: NodeId, limit: usize) -> Vec<ItemHit> {
+        self.largest_files_before(id, limit, None)
+    }
+
+    /// The `limit` largest files below `id`, optionally only those last
+    /// modified before `before_ns` (nanoseconds since the Unix epoch). Files
+    /// with an unknown date are left out by that filter.
+    pub fn largest_files_before(
+        &self,
+        id: NodeId,
+        limit: usize,
+        before_ns: Option<i64>,
+    ) -> Vec<ItemHit> {
         if self.get(id).is_none() || limit == 0 {
             return Vec::new();
         }
         let mut heap: BinaryHeap<Reverse<(u64, NodeId)>> = BinaryHeap::with_capacity(limit + 1);
         self.for_each_descendant(id, |cid, n| {
-            if matches!(n.kind, Kind::File | Kind::Link | Kind::Other) {
+            let old_enough = before_ns.is_none_or(|b| n.mtime != 0 && n.mtime < b);
+            if matches!(n.kind, Kind::File | Kind::Link | Kind::Other) && old_enough {
                 if heap.len() < limit {
                     heap.push(Reverse((n.size, cid)));
                 } else if let Some(Reverse((min, _))) = heap.peek() {
@@ -437,6 +579,93 @@ impl Tree {
             kind: kind_str(n.kind),
             cat: n.category as u8,
             rel_path: self.rel_path(base, id),
+            modified_ms: if n.kind == Kind::Dir {
+                0
+            } else {
+                n.mtime / 1_000_000
+            },
+        }
+    }
+
+    /// The node at an absolute path inside this scan.
+    pub fn find_path(&self, path: &Path) -> Option<NodeId> {
+        let rel = path.strip_prefix(&self.root_path).ok()?;
+        let mut cur = self.root();
+        for part in rel.components() {
+            let name = part.as_os_str().to_string_lossy();
+            cur = *self.get(cur)?.children.iter().find(|&&c| {
+                let n = &self.nodes[c as usize];
+                !n.removed && *n.name == *name
+            })?;
+        }
+        self.get(cur).map(|_| cur)
+    }
+
+    /// Folders called `name` below `id`; folders inside a match are not
+    /// searched (one entry per outermost `node_modules`, say).
+    pub fn dirs_named(&self, id: NodeId, name: &str) -> Vec<NodeId> {
+        let mut out = Vec::new();
+        let Some(node) = self.get(id) else {
+            return out;
+        };
+        let mut stack: Vec<NodeId> = node.children.clone();
+        while let Some(c) = stack.pop() {
+            let n = &self.nodes[c as usize];
+            if n.removed || n.kind != Kind::Dir {
+                continue;
+            }
+            if &*n.name == name {
+                out.push(c);
+            } else {
+                stack.extend_from_slice(&n.children);
+            }
+        }
+        out
+    }
+
+    /// Compares this scan with an earlier scan of the same folder.
+    pub fn compare_with(&self, earlier: &Tree) -> Comparison {
+        let mut previous = vec![NOT_BEFORE; self.nodes.len()];
+        if !self.nodes.is_empty() && !earlier.nodes.is_empty() {
+            previous[0] = earlier.nodes[0].size.saturating_sub(earlier.hidden);
+            let mut stack = vec![(0 as NodeId, 0 as NodeId)];
+            while let Some((cur, old)) = stack.pop() {
+                let old_children = &earlier.nodes[old as usize].children;
+                // Small folders: a linear search is cheaper than a map.
+                let by_name: Option<std::collections::HashMap<&str, NodeId>> =
+                    (old_children.len() > 16).then(|| {
+                        old_children
+                            .iter()
+                            .map(|&c| (&*earlier.nodes[c as usize].name, c))
+                            .collect()
+                    });
+                for &c in &self.nodes[cur as usize].children {
+                    let n = &self.nodes[c as usize];
+                    if n.kind == Kind::Hidden {
+                        continue;
+                    }
+                    let found = match &by_name {
+                        Some(map) => map.get(&*n.name).copied(),
+                        None => old_children
+                            .iter()
+                            .copied()
+                            .find(|&o| *earlier.nodes[o as usize].name == *n.name),
+                    };
+                    let Some(o) = found else { continue };
+                    let on = &earlier.nodes[o as usize];
+                    if on.removed || (on.kind == Kind::Dir) != (n.kind == Kind::Dir) {
+                        continue;
+                    }
+                    previous[c as usize] = on.size;
+                    if n.kind == Kind::Dir {
+                        stack.push((c, o));
+                    }
+                }
+            }
+        }
+        Comparison {
+            previous,
+            previous_ms: earlier.scanned_at / 1_000_000,
         }
     }
 

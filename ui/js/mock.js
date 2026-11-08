@@ -30,8 +30,11 @@ const FILES = {
 function makeTree(seed = 7) {
   const rand = rng(seed);
   const nodes = [];
+  const DAY = 86_400_000;
+  const now = Date.now();
   const add = (name, parent, kind, size = 0, cat = CAT.other) => {
     const n = { id: nodes.length, name, parent, kind, size, items: kind === 'dir' ? 0 : 1, cat, children: [], removed: false };
+    if (kind !== 'dir') n.mtime = Math.round(now - Math.pow(rand(), 1.7) * 1100 * DAY);
     nodes.push(n);
     if (parent >= 0) nodes[parent].children.push(n.id);
     return n;
@@ -121,7 +124,7 @@ function makeTree(seed = 7) {
         ['Library', 71, [
           ['Developer', 31, [['Xcode', 19, [['DerivedData', 12, { code: 3, app: 1 }], ['iOS DeviceSupport', 7, { app: 2, other: 1 }]]], ['CoreSimulator', 12, { app: 1, other: 1 }]]],
           ['Caches', 14, [['com.spotify.client', 4.1, { audio: 1, other: 2 }], ['Google', 3.4, { other: 1 }], ['Homebrew', 2.6, { archive: 2 }], ['com.apple.Safari', 1.2, { other: 1, image: 1 }]]],
-          ['Application Support', 19, [['Steam', 9.5, { app: 2, other: 3 }], ['Slack', 2.4, { other: 1, image: 1 }], ['Code', 1.8, { code: 1 }], ['MobileSync', 5.1, { other: 1 }]]],
+          ['Application Support', 19, [['Steam', 9.5, { app: 2, other: 3 }], ['Slack', 2.4, { other: 1, image: 1 }], ['Code', 1.8, { code: 1 }], ['MobileSync', 5.1, [['Backup', 5.1, many('iPhone backup ', 3, 5.1, { other: 1 })]]]]],
           ['Containers', 5, { other: 2, document: 1 }],
           ['Mail', 2, { document: 2, other: 1 }],
         ]],
@@ -130,6 +133,7 @@ function makeTree(seed = 7) {
         ['Documents', 21, [['Work', 9, { document: 4, image: 1 }], ['Scans', 3.5, { document: 1 }], ['Archive', 6.5, { archive: 1, document: 1 }]]],
         ['Music', 16, [['Music', 11, many('Album ', 12, 11, { audio: 1 })], ['GarageBand', 5, { audio: 2 }]]],
         ['Desktop', 5.5, { image: 3, document: 2, video: 1 }],
+        ['.Trash', 3.2, { archive: 2, video: 1, document: 1 }],
       ]],
       ['Shared', 2.4, { other: 1, archive: 1 }],
     ]],
@@ -157,6 +161,29 @@ function makeTree(seed = 7) {
   sumSpec(disk);
   build(disk, -1);
 
+  // Copies of some bigger files elsewhere, so the duplicate finder has
+  // something to find. Copies share a `dup` key with the original.
+  const byPath = (path) => path.split('/').reduce((cur, part) => cur != null && nodes[cur].children.find((c) => nodes[c].name === part), 0);
+  const spots = ['Users/joost/Downloads', 'Users/joost/Desktop', 'Users/joost/Documents/Archive', 'Users/joost/Movies/Exports', 'Users/joost/Pictures/Lightroom']
+    .map(byPath)
+    .filter((x) => x);
+  const big = nodes.filter((n) => n.kind === 'file' && n.size > 40 * MB && n.cat !== CAT.other);
+  for (let i = 0; i < 28 && big.length; i++) {
+    const orig = big.splice(Math.floor(rand() * big.length), 1)[0];
+    orig.dup = orig.id;
+    const copies = 1 + (rand() < 0.3 ? 1 : 0);
+    for (let k = 0; k < copies; k++) {
+      const dir = spots[Math.floor(rand() * spots.length)];
+      const dot = orig.name.lastIndexOf('.');
+      const name = dot > 0 ? `${orig.name.slice(0, dot)}${k ? ` (${k})` : ' copy'}${orig.name.slice(dot)}` : `${orig.name} copy`;
+      const c = add(name, dir, 'file', orig.size, orig.cat);
+      c.dup = orig.id;
+    }
+  }
+  // Downloads are older on average: good material for the age filter.
+  const dl = byPath('Users/joost/Downloads');
+  if (dl) for (const c of nodes[dl].children) if (nodes[c].mtime) nodes[c].mtime -= Math.round(rand() * 240 * DAY);
+
   // Aggregate sizes bottom-up and sort children.
   const finalize = (id) => {
     const n = nodes[id];
@@ -179,6 +206,28 @@ function makeTree(seed = 7) {
     n.children.sort((a, b) => nodes[b].size - nodes[a].size);
   };
   finalize(0);
+
+  // A previous scan from six days ago: most files unchanged, some grew,
+  // shrank or are new; a few folders lost files that were deleted since.
+  const BUSY = ['Downloads', 'Desktop', 'Movies', 'Developer', 'Caches', 'DerivedData', 'Documents'];
+  const before = (id, busy = false) => {
+    const n = nodes[id];
+    if (n.kind !== 'dir') {
+      const r = busy ? rand() : 0.5 + rand() * 0.5 + (rand() < 0.02 ? -0.45 : 0);
+      if (n.dup != null && n.dup !== n.id) n.prev = null; // copies are new
+      else if (r < 0.06) n.prev = null;
+      else if (r < 0.3) n.prev = Math.round(n.size * (0.6 + rand() * 0.37));
+      else if (r < 0.33) n.prev = Math.round(n.size * (1.1 + rand() * 0.5));
+      else n.prev = n.size;
+      return n.prev ?? 0;
+    }
+    let sum = 4096;
+    for (const c of n.children) sum += before(c, busy || BUSY.includes(n.name));
+    if (n.name === 'DerivedData') sum += Math.round(n.size * (0.1 + rand() * 0.1));
+    n.prev = n.name === 'checkpoints' ? null : sum;
+    return n.prev ?? 0;
+  };
+  before(0);
   return nodes;
 }
 
@@ -195,17 +244,29 @@ export function createMock() {
   const kindOf = (n) => n.kind;
   const live = (id) => nodes && nodes[id] && !nodes[id].removed;
 
+  let comparing = false;
+  const PREVIOUS_MS = Date.now() - 6 * 86_400_000 - 3 * 3_600_000;
+  const delta = (n) => (n.kind === 'hidden' ? null : n.size - (n.id === rootId ? hiddenBytes : 0) - (n.prev ?? 0));
+  const annotate = (v, n) => {
+    if (!comparing || n.kind === 'hidden') return v;
+    v.delta = delta(n);
+    if (n.prev == null) v.new = true;
+    return v;
+  };
   const leaf = (id) => {
     const n = nodes[id];
-    return {
-      id: n.id,
-      name: id === rootId ? rootPath : n.name,
-      size: n.size,
-      items: n.items,
-      kind: kindOf(n),
-      cat: n.cat,
-      has_children: n.children.length > 0,
-    };
+    return annotate(
+      {
+        id: n.id,
+        name: id === rootId ? rootPath : n.name,
+        size: n.size,
+        items: n.items,
+        kind: kindOf(n),
+        cat: n.cat,
+        has_children: n.children.length > 0,
+      },
+      n,
+    );
   };
 
   const view = (id, depth, minSize) => {
@@ -258,7 +319,18 @@ export function createMock() {
       stack.push(...n.children);
     }
   };
-  const hit = (base, n) => ({ id: n.id, name: n.name, size: n.size, kind: n.kind, cat: n.cat, rel_path: relPath(base, n.id) });
+  const hit = (base, n) => ({ id: n.id, name: n.name, size: n.size, kind: n.kind, cat: n.cat, rel_path: relPath(base, n.id), modified_ms: n.mtime || 0 });
+  const findPath = (path) => {
+    const parts = path.split('/').filter(Boolean);
+    const base = rootPath.split('/').filter(Boolean);
+    if (base.some((b, i) => parts[i] !== b)) return null;
+    let cur = rootId;
+    for (const part of parts.slice(base.length)) {
+      cur = nodes[cur].children.find((c) => nodes[c].name === part && !nodes[c].removed);
+      if (cur == null) return null;
+    }
+    return cur;
+  };
 
   const stats = () => {
     let dirs = 0;
@@ -340,6 +412,7 @@ export function createMock() {
   };
 
   let currentScan = null;
+  let dupTimer = null;
   // Saved scans, as the real app keeps them between sessions.
   const saved = new Map([
     ['/', { root_path: '/', scanned_at_ms: Date.now() - 2 * 3600 * 1000, elapsed_ms: 48_000, complete: true, size: 520e9, files: 4_751_801, dirs: 512_000, unreadable: 14, nodes: 0 }],
@@ -353,7 +426,7 @@ export function createMock() {
   ];
 
   const handlers = {
-    app_info: () => ({ version: '0.4.0', os: 'macos', arch: 'aarch64', home: '/Users/joost', preview: true }),
+    app_info: () => ({ version: '0.5.0', os: 'macos', arch: 'aarch64', home: '/Users/joost', preview: true }),
     list_volumes: () => VOLUMES,
     pick_folder: () => '/Users/joost/Developer',
     saved_scans: () =>
@@ -373,14 +446,19 @@ export function createMock() {
       const record = saved.get(path);
       if (!record || !record.complete) throw new Error('no saved scan');
       const vol = prepare(path);
-      return { scan_id: 0, stats: { ...stats(), scanned_at_ms: record.scanned_at_ms }, elapsed_ms: record.elapsed_ms, volume: vol || null, saved: true };
+      return { scan_id: 0, stats: { ...stats(), scanned_at_ms: record.scanned_at_ms }, elapsed_ms: record.elapsed_ms, volume: vol || null, saved: true, previous_ms: path === '/' ? PREVIOUS_MS : null, file_dates: true };
     },
-    start_scan: ({ path, full }) => {
+    start_scan: ({ path, full, exclude }) => {
       clearInterval(timer);
       const id = ++scanId;
       const previous = saved.get(path);
       const incremental = !!previous && !full;
       const vol = prepare(path);
+      // Excluded folders inside this scan are left out, like the real scanner.
+      for (const e of exclude || []) {
+        const ex = findPath(e);
+        if (ex != null && ex !== rootId) remove(ex);
+      }
       const totalFiles = nodes[rootId].items;
       const totalBytes = nodes[rootId].size - hiddenBytes;
       const totalDirs = stats().dirs;
@@ -410,7 +488,7 @@ export function createMock() {
           currentScan = null;
           const s = { ...stats(), scanned_at_ms: scannedAt };
           saved.set(path, { root_path: path, scanned_at_ms: scannedAt, elapsed_ms: el, complete: true, size: s.size - hiddenBytes, files: s.files, dirs: s.dirs, unreadable: s.unreadable, nodes: nodes.length });
-          emit('scan-done', { scan_id: id, stats: s, elapsed_ms: el, volume: vol || null, saved: false });
+          emit('scan-done', { scan_id: id, stats: s, elapsed_ms: el, volume: vol || null, saved: false, previous_ms: previous?.complete ? previous.scanned_at_ms : null, file_dates: true });
         }
       }, 70);
       currentScan = { path, scannedAt };
@@ -444,9 +522,10 @@ export function createMock() {
       }
       return out;
     },
-    largest_files: ({ id, limit }) => {
+    largest_files: ({ id, limit, olderThanDays }) => {
       const files = [];
-      descendants(id, (n) => n.kind === 'file' && files.push(n));
+      const before = olderThanDays ? Date.now() - olderThanDays * 86_400_000 : null;
+      descendants(id, (n) => n.kind === 'file' && (!before || (n.mtime && n.mtime < before)) && files.push(n));
       return files.sort((a, b) => b.size - a.size).slice(0, limit).map((n) => hit(id, n));
     },
     search: ({ id, query, limit }) => {
@@ -470,6 +549,107 @@ export function createMock() {
         const covered = ancestors(id).slice(0, -1).some((a) => set.has(a));
         return { id, name: n.name, size: n.size, kind: n.kind, cat: n.cat, path: pathOf(id), covered };
       });
+    },
+    load_comparison: () => {
+      if (rootPath !== '/' || !nodes) return null;
+      comparing = true;
+      return { previous_ms: PREVIOUS_MS, delta: delta(nodes[rootId]) };
+    },
+    changes: ({ id, limit }) => {
+      if (!comparing || !live(id)) return null;
+      const items = nodes[id].children
+        .map((c) => nodes[c])
+        .filter((n) => !n.removed && n.kind !== 'hidden' && delta(n) !== 0)
+        .map((n) => ({ id: n.id, name: n.name, size: n.size, kind: n.kind, cat: n.cat, has_children: n.children.length > 0, delta: delta(n), new: n.prev == null }))
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+        .slice(0, limit);
+      return { previous_ms: PREVIOUS_MS, delta: delta(nodes[id]), size: nodes[id].size, items };
+    },
+    find_duplicates: ({ id, minSize }) => {
+      clearInterval(dupTimer);
+      const job = ++scanId;
+      const files = [];
+      descendants(id, (n) => n.kind === 'file' && n.dup != null && n.size >= minSize && files.push(n));
+      const started = performance.now();
+      const dur = 1400;
+      dupTimer = setInterval(() => {
+        const f = Math.min(1, (performance.now() - started) / dur);
+        const phase = f < 0.25 ? 1 : f < 0.45 ? 2 : 3;
+        const total = phase === 1 ? files.length * 40 : files.length;
+        emit('dup-progress', { job, phase, files_done: Math.round(total * Math.min(1, f * 1.2)), files_total: total, bytes_done: Math.round(f * 18e9), bytes_total: 18e9 });
+        if (f < 1) return;
+        clearInterval(dupTimer);
+        const groups = new Map();
+        for (const n of files) groups.set(n.dup, [...(groups.get(n.dup) || []), n]);
+        const out = [...groups.values()]
+          .filter((g) => g.length > 1)
+          .map((g) => {
+            const copyName = (n) => (/( copy( \d+)?| \(\d+\)| - copy| kopie)$/i.test(n.name.replace(/\.[^.]+$/, '')) ? 1 : 0);
+            g.sort((a, b) => copyName(a) - copyName(b) || pathOf(a.id).split('/').length - pathOf(b.id).split('/').length || pathOf(a.id).localeCompare(pathOf(b.id)));
+            return { len: g[0].size, size: g[0].size, wasted: g[0].size * (g.length - 1), files: g.map((n) => ({ id: n.id, name: n.name, path: pathOf(n.id), cat: n.cat, size: n.size })) };
+          })
+          .sort((a, b) => b.wasted - a.wasted);
+        emit('dup-done', { job, root: id, cancelled: false, groups: out, total_groups: out.length, wasted: out.reduce((s, g) => s + g.wasted, 0) });
+      }, 90);
+      return job;
+    },
+    cancel_duplicates: () => {
+      clearInterval(dupTimer);
+      emit('dup-done', { job: scanId, root: 0, cancelled: true, groups: [], total_groups: 0, wasted: 0 });
+      return null;
+    },
+    cleanup_suggestions: () => {
+      const home = '/Users/joost';
+      const out = [];
+      const place = (key, rel, info = false) => {
+        const id = findPath(`${home}/${rel}`);
+        if (id == null) return;
+        const kids = nodes[id].children.filter((c) => !nodes[c].removed);
+        out.push({ key, focus: id, path: pathOf(id), size: nodes[id].size, count: kids.length, ids: info ? [] : kids, truncated: false, info });
+      };
+      place('caches', 'Library/Caches');
+      place('xcode_derived', 'Library/Developer/Xcode/DerivedData');
+      place('ios_backups', 'Library/Application Support/MobileSync/Backup');
+      place('trash', '.Trash', true);
+      const nm = [];
+      const walk = (id) => {
+        for (const c of nodes[id].children) {
+          const n = nodes[c];
+          if (n.removed || n.kind !== 'dir') continue;
+          if (n.name === 'node_modules') nm.push(n);
+          else walk(c);
+        }
+      };
+      walk(rootId);
+      if (nm.length) out.push({ key: 'node_modules', focus: null, path: null, size: nm.reduce((s, n) => s + n.size, 0), count: nm.length, ids: nm.map((n) => n.id), truncated: false, info: false });
+      const dl = findPath(`${home}/Downloads`);
+      if (dl != null) {
+        const cutoff = Date.now() - 90 * 86_400_000;
+        const old = [];
+        descendants(dl, (n) => n.kind === 'file' && n.mtime && n.mtime < cutoff && old.push(n));
+        old.sort((a, b) => b.size - a.size);
+        if (old.length) out.push({ key: 'old_downloads', focus: dl, path: pathOf(dl), size: old.reduce((s, n) => s + n.size, 0), count: old.length, ids: old.map((n) => n.id), truncated: false, info: false });
+      }
+      return out.filter((x) => x.size >= 20 * MB).sort((a, b) => b.size - a.size);
+    },
+    export_csv: ({ id, fileName }) => {
+      const rows = ['\ufeffPath,Type,Size (bytes),Size,Items,Modified'];
+      const q = (v) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+      const walk = (nid) => {
+        const n = nodes[nid];
+        if (n.removed) return;
+        const date = n.mtime ? new Date(n.mtime).toISOString().slice(0, 10) : '';
+        rows.push([q(pathOf(nid)), n.kind === 'dir' ? 'folder' : n.kind, Math.round(n.size), `${(n.size / 1e9).toFixed(1)} GB`, n.items, n.kind === 'dir' ? '' : date].join(','));
+        for (const c of n.children) if (nodes[c].kind === 'dir' || nodes[c].size >= 1e6) walk(c);
+      };
+      walk(id);
+      const url = URL.createObjectURL(new Blob([rows.join('\n') + '\n'], { type: 'text/csv' }));
+      const a = Object.assign(document.createElement('a'), { href: url, download: fileName });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      return fileName;
     },
     // The browser demo never offers updates.
     check_update: () => null,

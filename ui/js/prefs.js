@@ -12,6 +12,8 @@ const PREFS = {
   colorMode: { key: '2ds-color', def: 'folder', values: ['folder', 'type'] },
   // Folder levels shown in the chart.
   rings: { key: '2ds-rings', def: '5', values: ['4', '5', '6', '7'] },
+  // Chart view: rings or nested boxes.
+  chartView: { key: '2ds-view', def: 'sunburst', values: ['sunburst', 'treemap'] },
   // 'auto' follows the system's reduce-motion setting.
   motion: { key: '2ds-motion', def: 'auto', values: ['auto', 'on', 'off'] },
   // Look for a new version at startup: 'on' | 'off'
@@ -38,6 +40,30 @@ export function setPref(name, value) {
   try {
     if (v === p.def) localStorage.removeItem(p.key);
     else localStorage.setItem(p.key, v);
+  } catch {
+    /* ignore */
+  }
+}
+
+// Lists of strings, stored as JSON.
+const LISTS = {
+  // Folders every scan skips.
+  excluded: '2ds-excluded',
+};
+
+export function getList(name) {
+  try {
+    const v = JSON.parse(localStorage.getItem(LISTS[name]) || '[]');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setList(name, list) {
+  try {
+    if (list.length) localStorage.setItem(LISTS[name], JSON.stringify(list));
+    else localStorage.removeItem(LISTS[name]);
   } catch {
     /* ignore */
   }

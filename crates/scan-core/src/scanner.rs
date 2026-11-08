@@ -131,6 +131,8 @@ struct FileTmp {
     size: u64,
     kind: Kind,
     category: Category,
+    /// Modification time in nanoseconds since the Unix epoch; 0 when unknown.
+    mtime: i64,
 }
 
 struct DirTmp {
@@ -329,6 +331,7 @@ fn read_dir(job: Pending, ctx: &Ctx<'_>) -> DirTmp {
             size,
             kind,
             category,
+            mtime: e.mtime,
         });
     }
     ctx.progress.files.fetch_add(count, Ordering::Relaxed);
@@ -365,15 +368,17 @@ fn reuse_dir(job: &Pending, tree: &Tree, id: NodeId, ctx: &Ctx<'_>) -> Option<Di
                 previous: Some(c),
             });
         } else {
-            let mut size = child.size;
+            let (mut size, mut mtime) = (child.size, child.mtime);
             if size >= REMEASURE_FROM {
-                size = listing::stat(&path).ok()?.size;
+                let now = listing::stat(&path).ok()?;
+                (size, mtime) = (now.size, now.mtime);
             }
             files.push(FileTmp {
                 name: child.name.clone(),
                 size,
                 kind: child.kind,
                 category: child.category,
+                mtime,
             });
         }
     }
@@ -433,6 +438,7 @@ fn flatten(
     unreadable: u64,
     scanned_at: i64,
     finished: bool,
+    excluded: Vec<PathBuf>,
 ) -> Tree {
     let mut nodes: Vec<Node> = Vec::with_capacity((root.items as usize).saturating_add(1024));
     nodes.push(dir_node(&root, NO_PARENT));
@@ -452,7 +458,7 @@ fn flatten(
                 unreadable: false,
                 removed: false,
                 complete: true,
-                mtime: 0,
+                mtime: f.mtime,
                 children: Vec::new(),
                 cats: None,
             });
@@ -466,7 +472,7 @@ fn flatten(
         children.sort_by(|&a, &b| nodes[b as usize].size.cmp(&nodes[a as usize].size));
         nodes[id as usize].children = children;
     }
-    Tree::from_nodes(root_path, nodes, unreadable, scanned_at, finished)
+    Tree::from_nodes(root_path, nodes, unreadable, scanned_at, finished).with_meta(true, excluded)
 }
 
 fn default_threads() -> usize {
@@ -508,11 +514,14 @@ pub fn scan(root: &Path, opts: &ScanOptions, progress: &Progress) -> Result<Tree
         .build()
         .map_err(|e| ScanError::ThreadPool(e.to_string()))?;
 
-    // Only a scan of the same folder can be reused.
-    let previous = opts
-        .previous
-        .as_deref()
-        .filter(|p| p.root_path() == root && !p.is_empty());
+    // Only a scan of the same folder, made with the same excluded folders and
+    // with file dates (older saved scans have none), can be reused.
+    let previous = opts.previous.as_deref().filter(|p| {
+        p.root_path() == root
+            && !p.is_empty()
+            && p.has_file_dates()
+            && same_paths(p.excluded(), &opts.excluded)
+    });
     let ctx = Ctx {
         opts,
         progress,
@@ -531,5 +540,26 @@ pub fn scan(root: &Path, opts: &ScanOptions, progress: &Progress) -> Result<Tree
     let tmp = pool.install(|| scan_dir(job, &ctx));
     let finished = !progress.is_cancelled();
     let unreadable = ctx.unreadable.load(Ordering::Relaxed);
-    Ok(pool.install(|| flatten(root.to_path_buf(), tmp, unreadable, scanned_at, finished)))
+    let excluded = opts.excluded.clone();
+    Ok(pool.install(|| {
+        flatten(
+            root.to_path_buf(),
+            tmp,
+            unreadable,
+            scanned_at,
+            finished,
+            excluded,
+        )
+    }))
+}
+
+/// The same paths, in any order.
+fn same_paths(a: &[PathBuf], b: &[PathBuf]) -> bool {
+    let mut a: Vec<&PathBuf> = a.iter().collect();
+    let mut b: Vec<&PathBuf> = b.iter().collect();
+    a.sort();
+    a.dedup();
+    b.sort();
+    b.dedup();
+    a == b
 }

@@ -2,8 +2,9 @@
 
 @php
     $featureIcons = [
-        'sunburst' => 'pie', 'speed' => 'bolt', 'hidden' => 'eye', 'largest' => 'search',
-        'saved' => 'history', 'collector' => 'trash', 'native' => 'monitor', 'private' => 'shield',
+        'sunburst' => 'pie', 'speed' => 'bolt', 'changes' => 'trend', 'duplicates' => 'copy',
+        'cleanup' => 'broom', 'largest' => 'search', 'hidden' => 'eye', 'saved' => 'history',
+        'collector' => 'trash', 'tools' => 'filter', 'native' => 'monitor', 'private' => 'shield',
     ];
     $demoSrc = asset('demo/index.html').'?demo=scan&path=%2F&label=Macintosh%20HD&theme=dark';
 @endphp
@@ -106,6 +107,14 @@
                 <figure class="shot reveal">
                     <img src="{{ asset('img/screens/types-light.png') }}" alt="{{ __('site.showcase.light') }}" loading="lazy" width="2640" height="1720">
                     <figcaption>{{ __('site.showcase.light') }}</figcaption>
+                </figure>
+                <figure class="shot reveal">
+                    <img src="{{ asset('img/screens/changes-dark.png') }}" alt="{{ __('site.showcase.changes') }}" loading="lazy" width="2640" height="1720">
+                    <figcaption>{{ __('site.showcase.changes') }}</figcaption>
+                </figure>
+                <figure class="shot reveal">
+                    <img src="{{ asset('img/screens/treemap-light.png') }}" alt="{{ __('site.showcase.treemap') }}" loading="lazy" width="2640" height="1720">
+                    <figcaption>{{ __('site.showcase.treemap') }}</figcaption>
                 </figure>
             </div>
         </div>
