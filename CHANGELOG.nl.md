@@ -11,6 +11,10 @@ Alle belangrijke wijzigingen in 2DriveScan. De Engelse versie staat in `CHANGELO
 - **Controle op volledige schijftoegang.** 2DriveScan controleert nu of het volledige schijftoegang heeft. Staat
   die aan, dan vraagt de statusbalk er niet meer om als er alleen systeemmappen van macOS (die geen enkele app kan
   lezen) ongelezen blijven, en Instellingen toont of de toegang aanstaat.
+- **Beschermde mappen.** Systeemmappen (`/System`, `/usr`, `/private`, `C:\Windows`, ...) en belangrijke mappen
+  zoals de thuismap, `~/Library`, Programma's en Downloads zijn vergrendeld: ze tonen een klein slotje en kunnen
+  niet in de Verzamelaar of naar de prullenmand. Binnen de mappen die alleen zelf vergrendeld zijn (Library,
+  Downloads, ...) kan alles nog weg, dus de opruimsuggesties blijven werken.
 
 ## 0.5.0 – 2026-11-08
 

@@ -97,6 +97,10 @@ pub struct ViewNode {
     /// Whether the node has children at all (even if they were pruned).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub has_children: bool,
+    /// A protected folder that cannot be removed (set by the app, which knows
+    /// the rules of the operating system).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
     /// Change in size since the previous scan (only when comparing).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delta: Option<i64>,
@@ -459,6 +463,7 @@ impl Tree {
             cat: n.category as u8,
             unreadable: n.unreadable,
             has_children: !n.children.is_empty(),
+            locked: false,
             delta: None,
             new: false,
             children: Vec::new(),
@@ -503,6 +508,7 @@ impl Tree {
                 cat: Category::Other as u8,
                 unreadable: false,
                 has_children: false,
+                locked: false,
                 delta: None,
                 new: false,
                 children: Vec::new(),
@@ -534,6 +540,7 @@ impl Tree {
                 cat: Category::Other as u8,
                 unreadable: false,
                 has_children: false,
+                locked: false,
                 delta: None,
                 new: false,
                 children: Vec::new(),

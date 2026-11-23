@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cleanup;
+mod protect;
 mod volumes;
 
 use std::path::{Path, PathBuf};
@@ -135,6 +136,9 @@ struct ResolvedItem {
     path: String,
     /// True when an ancestor of this item is also in the list.
     covered: bool,
+    /// A protected folder (see `protect`); the Collector refuses it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    locked: bool,
 }
 
 #[derive(Serialize)]
@@ -697,12 +701,21 @@ fn get_view(state: State<'_, AppState>, id: NodeId, depth: u32) -> CmdResult<Vie
         if let Some(c) = &cmp {
             c.annotate(t, &mut root);
         }
+        mark_locked(t, &mut root);
         Ok(ViewResponse {
             root,
             crumbs: t.crumbs(id),
             path: t.path_of(id).display().to_string(),
         })
     })
+}
+
+/// Sets `locked` on a view and its children (protected folders, see `protect`).
+fn mark_locked(t: &Tree, v: &mut ViewNode) {
+    if v.id >= 0 && v.kind != "hidden" {
+        v.locked = protect::is_locked(&t.path_of(v.id as NodeId));
+    }
+    v.children.iter_mut().for_each(|c| mark_locked(t, c));
 }
 
 #[tauri::command(async)]
@@ -713,6 +726,7 @@ fn list_children(state: State<'_, AppState>, id: NodeId, limit: usize) -> CmdRes
         if let Some(c) = &cmp {
             list.iter_mut().for_each(|v| c.annotate(t, v));
         }
+        list.iter_mut().for_each(|v| mark_locked(t, v));
         Ok(list)
     })
 }
@@ -1055,6 +1069,7 @@ fn resolve_items(state: State<'_, AppState>, ids: Vec<NodeId>) -> CmdResult<Vec<
                     cat: n.category as u8,
                     path: t.path_of(id).display().to_string(),
                     covered: covered.contains(&id),
+                    locked: n.kind != scan_core::Kind::Hidden && protect::is_locked(&t.path_of(id)),
                 }
             })
             .collect())
@@ -1128,6 +1143,15 @@ async fn trash_nodes(
     let mut removed = Vec::new();
     let mut failed = Vec::new();
     for (id, name, path) in targets {
+        // Never, whatever the UI sent: protected system and home folders.
+        if protect::is_locked(&path) {
+            failed.push(TrashFailure {
+                id,
+                name,
+                error: "protected folder".into(),
+            });
+            continue;
+        }
         match tauri::async_runtime::spawn_blocking(move || move_to_trash(&path)).await {
             Ok(Ok(())) => removed.push(id),
             Ok(Err(error)) => failed.push(TrashFailure { id, name, error }),

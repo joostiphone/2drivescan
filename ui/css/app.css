@@ -2995,3 +2995,28 @@ kbd {
   width: 14px;
   height: 14px;
 }
+
+/* Protected folders (see src-tauri/src/protect.rs). */
+.locked-badge {
+  display: inline-flex;
+  vertical-align: -1px;
+  margin-left: 6px;
+  color: var(--text-3);
+}
+
+.locked-badge .icon {
+  width: 11px;
+  height: 11px;
+}
+
+.tooltip .tt-hint .icon {
+  width: 11px;
+  height: 11px;
+  vertical-align: -1px;
+}
+
+.ctxmenu button[disabled] {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
+}

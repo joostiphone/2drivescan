@@ -253,6 +253,20 @@ export function createMock() {
     if (n.prev == null) v.new = true;
     return v;
   };
+  // Same idea as src-tauri/src/protect.rs (macOS rules, demo home folder).
+  const LOCKED_TREES = ['/System', '/bin', '/sbin', '/usr', '/private', '/etc', '/var', '/tmp', '/cores', '/dev', '/Library/Apple'];
+  const LOCKED_FOLDERS = ['/', '/Applications', '/Library', '/Library/Application Support', '/Users', '/Users/Shared', '/opt', '/usr/local'].concat(
+    ['', '/Applications', '/Desktop', '/Documents', '/Downloads', '/Movies', '/Music', '/Pictures', '/Public', '/Library', '/Library/Application Support', '/Library/Caches', '/Library/Containers', '/Library/Group Containers', '/Library/Logs', '/Library/Mobile Documents', '/Library/Preferences', '/.Trash'].map((p) => `/Users/joost${p}`),
+  );
+  const isLocked = (path) => {
+    const p = path.toLowerCase();
+    const under = (base) => p === base.toLowerCase() || p.startsWith(`${base.toLowerCase()}/`);
+    if (LOCKED_FOLDERS.some((f) => f.toLowerCase() === p)) return true;
+    if (under('/usr/local')) return false;
+    return LOCKED_TREES.some(under);
+  };
+  const lockedNode = (id) => nodes[id].kind !== 'hidden' && isLocked(pathOf(id));
+
   const leaf = (id) => {
     const n = nodes[id];
     return annotate(
@@ -264,6 +278,7 @@ export function createMock() {
         kind: kindOf(n),
         cat: n.cat,
         has_children: n.children.length > 0,
+        ...(lockedNode(id) ? { locked: true } : {}),
       },
       n,
     );
@@ -555,7 +570,7 @@ export function createMock() {
       return ids.filter(live).map((id) => {
         const n = nodes[id];
         const covered = ancestors(id).slice(0, -1).some((a) => set.has(a));
-        return { id, name: n.name, size: n.size, kind: n.kind, cat: n.cat, path: pathOf(id), covered };
+        return { id, name: n.name, size: n.size, kind: n.kind, cat: n.cat, path: pathOf(id), covered, ...(lockedNode(id) ? { locked: true } : {}) };
       });
     },
     load_comparison: () => {
@@ -674,6 +689,7 @@ export function createMock() {
       let freed = 0;
       for (const id of ids) {
         if (!live(id) || ancestors(id).slice(0, -1).some((a) => set.has(a))) continue;
+        if (lockedNode(id)) continue;
         freed += remove(id);
         removed.push(id);
       }

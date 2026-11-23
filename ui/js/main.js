@@ -942,7 +942,7 @@ function rowHtml(item, { total, sub = null, showPct = true, meta = null, pct = n
       <div class="bar" style="--pct:${share};background:${barColor || color}"></div>
       <div class="glyph${item.kind === 'group' ? ' group' : ''}" style="background:${color}">${icon(glyphIcon)}</div>
       <div class="label">
-        <div class="name" title="${esc(displayName(item))}">${esc(displayName(item))}</div>
+        <div class="name" title="${esc(displayName(item))}">${esc(displayName(item))}${item.locked ? `<span class="locked-badge" title="${esc(t('locked_item'))}">${icon('lock')}</span>` : ''}</div>
         ${sub ? `<div class="sub" title="${esc(sub)}">${esc(sub)}</div>` : ''}
       </div>
       <div class="meta">${meta ?? `<div class="size">${esc(bytes(item.size))}</div>${showPct ? `<div class="pct">${esc(percent(item.size, total))}</div>` : ''}`}</div>
@@ -1328,6 +1328,7 @@ function showTooltip(node, e) {
   const focus = state.view.root;
   let hint = '';
   if (node.kind === 'hidden') hint = `<div class="tt-hint">${esc(hiddenHint(node))}</div>`;
+  else if (node.locked) hint = `<div class="tt-hint">${icon('lock')} ${esc(t('locked_hint'))}</div>`;
   const sub = node.kind === 'group' ? t('smaller_items', { n: count(node.items) }) : node.kind === 'dir' ? itemsLabel(node.items) : '';
   const change =
     node.delta != null && state.compare
@@ -1378,12 +1379,13 @@ function showMenu(item, e) {
   entries.push(['copy', 'copy', t('copy_path')]);
   if (!isRoot) {
     entries.push(null);
-    entries.push(inCollector ? ['uncollect', 'x', t('remove_from_collector')] : ['collect', 'trash', t('add_to_collector')]);
+    if (item.locked) entries.push(['locked', 'lock', t('locked_item'), true]);
+    else entries.push(inCollector ? ['uncollect', 'x', t('remove_from_collector')] : ['collect', 'trash', t('add_to_collector')]);
     if (item.kind === 'dir') entries.push(['exclude', 'ban', t('exclude')]);
   }
   menu.innerHTML =
     `<div class="ctx-title">${esc(displayName(item))} · ${esc(bytes(item.size))}</div>` +
-    entries.map((en) => (en ? `<button type="button" data-act="${en[0]}">${icon(en[1])}<span>${esc(en[2])}</span></button>` : '<hr/>')).join('');
+    entries.map((en) => (en ? `<button type="button" data-act="${en[0]}"${en[3] ? ' disabled' : ''}>${icon(en[1])}<span>${esc(en[2])}</span></button>` : '<hr/>')).join('');
   menu.hidden = false;
   const r = menu.getBoundingClientRect();
   let x = e.clientX;
@@ -1440,6 +1442,10 @@ function hideMenu() {
 
 function beginDrag(item, e) {
   if (item.id < 0 || item.kind === 'hidden' || item.id === state.rootId) return;
+  if (item.locked) {
+    toast(t('locked_toast', { name: displayName(item) }));
+    return;
+  }
   hideTooltip();
   const ghost = $('#drag-ghost');
   const collector = $('#collector');
@@ -1474,6 +1480,10 @@ function beginDrag(item, e) {
 
 async function addToCollector(item) {
   if (item.id < 0 || item.kind === 'hidden' || item.id === state.rootId) return;
+  if (item.locked) {
+    toast(t('locked_toast', { name: displayName(item) }));
+    return;
+  }
   if (state.collector.has(item.id)) {
     toast(t('already_collected'));
     return;
@@ -1487,7 +1497,8 @@ async function addManyToCollector(ids) {
   const fresh = ids.filter((id) => id >= 0 && id !== state.rootId && !state.collector.has(id));
   for (const id of fresh) state.collector.set(id, { id, name: '', size: 0, kind: 'file', cat: 7, covered: false });
   await resolveCollector();
-  if (fresh.length) toast(t('collected_many', { n: count(fresh.length) }));
+  const added = fresh.filter((id) => state.collector.has(id)).length;
+  if (added) toast(t('collected_many', { n: count(added) }));
 }
 
 function removeFromCollector(id) {
@@ -1501,8 +1512,12 @@ async function resolveCollector() {
     try {
       const resolved = await api.resolveItems(ids);
       const next = new Map();
-      for (const r of resolved) next.set(r.id, r);
+      // Protected folders never enter the Collector, however they were added.
+      const locked = resolved.filter((r) => r.locked);
+      for (const r of resolved) if (!r.locked) next.set(r.id, r);
       state.collector = next;
+      if (locked.length === 1) toast(t('locked_toast', { name: locked[0].name }));
+      else if (locked.length > 1) toast(t('locked_many', { n: count(locked.length) }));
     } catch {
       /* keep the optimistic state */
     }
