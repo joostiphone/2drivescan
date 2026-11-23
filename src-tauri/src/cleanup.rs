@@ -353,10 +353,14 @@ pub fn write_csv(tree: &Tree, id: NodeId, out: &mut impl std::io::Write) -> std:
         for &c in n.children.iter().rev() {
             let Some(child) = tree.get(c) else { continue };
             if child.kind == Kind::Dir || child.size >= CSV_MIN_FILE {
-                let name = if child.kind == Kind::Hidden {
+                let volume;
+                let name = if child.kind != Kind::Hidden {
+                    &child.name
+                } else if &*child.name == scan_core::HIDDEN_SPACE {
                     "(hidden space)"
                 } else {
-                    &child.name
+                    volume = format!("(volume {})", child.name);
+                    &volume
                 };
                 let p = if path.ends_with(sep) {
                     format!("{path}{name}")

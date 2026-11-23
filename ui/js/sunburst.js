@@ -451,7 +451,7 @@ export class Sunburst {
         const chord = 2 * r0 * Math.sin(Math.min(span, Math.PI) / 2);
         const room = Math.min(span * rm, chord) - 12;
         if (room < 42) continue;
-        let text = node.kind === 'hidden' ? this.cb.hiddenLabel || 'Hidden' : node.name;
+        let text = node.kind === 'hidden' ? this.cb.hiddenLabel?.(node) || node.name : node.name;
         text = fitText(ctx, text, room);
         if (!text) continue;
         const mid = START + ((arc.x0 + arc.x1) / 2) * TAU;

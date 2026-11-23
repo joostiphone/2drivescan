@@ -339,7 +339,7 @@ export class Treemap {
     const center = this.theme.center;
     for (const r of this.rects) {
       if (r.depth === 0 || r.node.kind === 'group') continue;
-      const name = r.node.kind === 'hidden' ? this.cb.hiddenLabel || 'Hidden' : r.node.name;
+      const name = r.node.kind === 'hidden' ? this.cb.hiddenLabel?.(r.node) || r.node.name : r.node.name;
       const color = this.colorFor(r);
       ink(r.header ? mix(center, color, 0.75) : color);
       if (r.header) {

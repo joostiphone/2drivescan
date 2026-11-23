@@ -357,3 +357,147 @@ fn options_for(_root: &Path) -> ScanOptions {
     // never follows, so nothing special is needed on Windows.
     ScanOptions::default()
 }
+
+/// Whether the app has Full Disk Access (macOS). Probes folders that only Full
+/// Disk Access opens: `Some(true)` when one can be listed, `Some(false)` when
+/// macOS refuses them all, `None` when none exist or on other systems.
+pub fn full_disk_access(home: Option<&std::path::Path>) -> Option<bool> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let home = home?;
+    let mut denied = false;
+    for rel in [
+        "Library/Safari",
+        "Library/Mail",
+        "Library/Application Support/com.apple.TCC",
+    ] {
+        match std::fs::read_dir(home.join(rel)) {
+            Ok(_) => return Some(true),
+            // EPERM: blocked by privacy protection (TCC).
+            Err(e) if e.raw_os_error() == Some(1) => denied = true,
+            Err(_) => {}
+        }
+    }
+    denied.then_some(false)
+}
+
+/// Named pieces of a volume's hidden space, largest first. On macOS these are
+/// the other APFS volumes in the same container (Preboot, Recovery, VM, or
+/// volumes the user added): they share the container's space, so they count
+/// as used on the scanned volume without being part of the scan. Empty on
+/// other systems or when nothing is known.
+pub fn hidden_parts(volume: &Volume) -> Vec<(String, u64)> {
+    #[cfg(target_os = "macos")]
+    {
+        apfs::other_volumes(Path::new(&volume.mount_point)).unwrap_or_default()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = volume;
+        Vec::new()
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod apfs {
+    use std::path::Path;
+    use std::process::Command;
+
+    use plist::{Dictionary, Value};
+
+    fn diskutil(args: &[&str]) -> Option<Dictionary> {
+        let out = Command::new("/usr/sbin/diskutil")
+            .args(args)
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        Value::from_reader(std::io::Cursor::new(out.stdout))
+            .ok()?
+            .into_dictionary()
+    }
+
+    /// The APFS volume mounted at `mount` (the volume itself when a snapshot
+    /// of it is mounted, as with the macOS system volume) and its container.
+    fn volume_at(mount: &Path) -> Option<(String, String)> {
+        let info = diskutil(&["info", "-plist", mount.to_str()?])?;
+        let container = info.get("APFSContainerReference")?.as_string()?.to_string();
+        let mut dev = info.get("DeviceIdentifier")?.as_string()?.to_string();
+        if info.get("APFSSnapshot").and_then(Value::as_boolean) == Some(true) {
+            // disk3s1s1 -> disk3s1
+            if let Some(i) = dev.rfind('s') {
+                dev.truncate(i);
+            }
+        }
+        Some((dev, container))
+    }
+
+    /// Volumes in the container of `mount` that a scan of it does not cover,
+    /// with the space each one uses.
+    pub fn other_volumes(mount: &Path) -> Option<Vec<(String, u64)>> {
+        let (dev, container) = volume_at(mount)?;
+        let mut scanned = vec![dev];
+        // A scan of / covers both halves of the startup disk.
+        if mount == Path::new("/") {
+            if let Some((data, c)) = volume_at(Path::new("/System/Volumes/Data")) {
+                if c == container {
+                    scanned.push(data);
+                }
+            }
+        }
+        let list = diskutil(&["apfs", "list", "-plist"])?;
+        let found = list
+            .get("Containers")?
+            .as_array()?
+            .iter()
+            .filter_map(Value::as_dictionary)
+            .find(|c| {
+                c.get("ContainerReference").and_then(Value::as_string) == Some(container.as_str())
+            })?;
+        let mut out = Vec::new();
+        for v in found
+            .get("Volumes")?
+            .as_array()?
+            .iter()
+            .filter_map(Value::as_dictionary)
+        {
+            let Some(id) = v.get("DeviceIdentifier").and_then(Value::as_string) else {
+                continue;
+            };
+            if scanned.iter().any(|s| s == id) {
+                continue;
+            }
+            let size = v
+                .get("CapacityInUse")
+                .and_then(Value::as_unsigned_integer)
+                .unwrap_or(0);
+            let name = v.get("Name").and_then(Value::as_string).unwrap_or(id);
+            if size > 0 {
+                out.push((name.to_string(), size));
+            }
+        }
+        out.sort_by_key(|p| std::cmp::Reverse(p.1));
+        Some(out)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn startup_disk_lists_its_other_volumes() {
+            let parts = other_volumes(Path::new("/")).expect("diskutil works");
+            // Every startup container has a Preboot volume, never part of a scan.
+            assert!(parts
+                .iter()
+                .any(|(name, size)| name == "Preboot" && *size > 0));
+            // The scanned volumes themselves are left out.
+            let (system, _) = volume_at(Path::new("/")).unwrap();
+            let (data, _) = volume_at(Path::new("/System/Volumes/Data")).unwrap();
+            assert_ne!(system, data);
+            assert!(parts.windows(2).all(|w| w[0].1 >= w[1].1));
+        }
+    }
+}

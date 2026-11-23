@@ -3,6 +3,20 @@
 All notable changes to 2DriveScan. The website shows this file on its changelog page;
 the Dutch version lives in `CHANGELOG.nl.md`.
 
+## Unreleased
+
+- **Hidden space, broken down.** On macOS, the other volumes on the same disk (Preboot, Recovery, VM, Update, or
+  volumes you added yourself, such as a Nix store) now get their own slice with their name and size, and a tooltip
+  says what each one is for. Only what is left over is still called hidden space. The usage bar at the top shows
+  hidden space as a hatched piece too; hover it for the breakdown.
+- **Full Disk Access check.** 2DriveScan now checks whether it has Full Disk Access. With access on, the status bar
+  no longer asks for it when only macOS system folders (readable by no app) are left unread, and Settings shows
+  whether access is on.
+- **Protected folders.** System folders (`/System`, `/usr`, `/private`, `C:\Windows`, ...) and key folders such as
+  the home folder, `~/Library`, Applications and Downloads are locked: they show a small lock and cannot be added to
+  the Collector or moved to the Trash. Inside the folders that are only locked themselves (Library, Downloads, ...)
+  everything can still be removed, so cleanup suggestions keep working.
+
 ## 0.5.0 – 2026-11-08
 
 - **What changed since the last scan.** 2DriveScan keeps the previous scan of each drive or folder and compares:

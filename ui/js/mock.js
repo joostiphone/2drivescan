@@ -253,6 +253,20 @@ export function createMock() {
     if (n.prev == null) v.new = true;
     return v;
   };
+  // Same idea as src-tauri/src/protect.rs (macOS rules, demo home folder).
+  const LOCKED_TREES = ['/System', '/bin', '/sbin', '/usr', '/private', '/etc', '/var', '/tmp', '/cores', '/dev', '/Library/Apple'];
+  const LOCKED_FOLDERS = ['/', '/Applications', '/Library', '/Library/Application Support', '/Users', '/Users/Shared', '/opt', '/usr/local'].concat(
+    ['', '/Applications', '/Desktop', '/Documents', '/Downloads', '/Movies', '/Music', '/Pictures', '/Public', '/Library', '/Library/Application Support', '/Library/Caches', '/Library/Containers', '/Library/Group Containers', '/Library/Logs', '/Library/Mobile Documents', '/Library/Preferences', '/.Trash'].map((p) => `/Users/joost${p}`),
+  );
+  const isLocked = (path) => {
+    const p = path.toLowerCase();
+    const under = (base) => p === base.toLowerCase() || p.startsWith(`${base.toLowerCase()}/`);
+    if (LOCKED_FOLDERS.some((f) => f.toLowerCase() === p)) return true;
+    if (under('/usr/local')) return false;
+    return LOCKED_TREES.some(under);
+  };
+  const lockedNode = (id) => nodes[id].kind !== 'hidden' && isLocked(pathOf(id));
+
   const leaf = (id) => {
     const n = nodes[id];
     return annotate(
@@ -264,6 +278,7 @@ export function createMock() {
         kind: kindOf(n),
         cat: n.cat,
         has_children: n.children.length > 0,
+        ...(lockedNode(id) ? { locked: true } : {}),
       },
       n,
     );
@@ -372,7 +387,7 @@ export function createMock() {
       if (pa != null && pa >= 0) nodes[pa].children.sort((x, y) => nodes[y].size - nodes[x].size);
       if (a === rootId) break;
     }
-    if (n.kind === 'hidden') hiddenBytes = 0;
+    if (n.kind === 'hidden') hiddenBytes = Math.max(0, hiddenBytes - n.size);
     return n.size;
   };
 
@@ -401,9 +416,17 @@ export function createMock() {
       const used = vol.total - vol.available;
       hiddenBytes = Math.max(0, used - nodes[0].size);
       if (hiddenBytes > 0) {
-        const h = { id: nodes.length, name: 'Hidden space', parent: 0, kind: 'hidden', size: hiddenBytes, items: 0, cat: 7, children: [], removed: false };
-        nodes.push(h);
-        nodes[0].children.push(h.id);
+        // Like the real app on macOS: other APFS volumes on the disk get their own slice.
+        const parts = vol.file_system === 'apfs' ? [['Preboot', 7.4 * GB], ['VM', 3.2 * GB], ['Recovery', 1.3 * GB], ['Update', 0.6 * GB]] : [];
+        let left = hiddenBytes;
+        for (const [name, want] of [...parts, ['Hidden space', Infinity]]) {
+          const size = Math.round(Math.min(want, left));
+          if (size <= 0) continue;
+          left -= size;
+          const h = { id: nodes.length, name, parent: 0, kind: 'hidden', size, items: 0, cat: 7, children: [], removed: false };
+          nodes.push(h);
+          nodes[0].children.push(h.id);
+        }
         nodes[0].size += hiddenBytes;
         nodes[0].children.sort((a, b) => nodes[b].size - nodes[a].size);
       }
@@ -426,7 +449,7 @@ export function createMock() {
   ];
 
   const handlers = {
-    app_info: () => ({ version: '0.5.0', os: 'macos', arch: 'aarch64', home: '/Users/joost', preview: true }),
+    app_info: () => ({ version: '0.5.0', os: 'macos', arch: 'aarch64', home: '/Users/joost', full_disk_access: true, preview: true }),
     list_volumes: () => VOLUMES,
     pick_folder: () => '/Users/joost/Developer',
     saved_scans: () =>
@@ -547,7 +570,7 @@ export function createMock() {
       return ids.filter(live).map((id) => {
         const n = nodes[id];
         const covered = ancestors(id).slice(0, -1).some((a) => set.has(a));
-        return { id, name: n.name, size: n.size, kind: n.kind, cat: n.cat, path: pathOf(id), covered };
+        return { id, name: n.name, size: n.size, kind: n.kind, cat: n.cat, path: pathOf(id), covered, ...(lockedNode(id) ? { locked: true } : {}) };
       });
     },
     load_comparison: () => {
@@ -666,6 +689,7 @@ export function createMock() {
       let freed = 0;
       for (const id of ids) {
         if (!live(id) || ancestors(id).slice(0, -1).some((a) => set.has(a))) continue;
+        if (lockedNode(id)) continue;
         freed += remove(id);
         removed.push(id);
       }

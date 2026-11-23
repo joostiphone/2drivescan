@@ -65,9 +65,19 @@ function itemsLabel(n) {
   return n === 1 ? t('item') : t('items', { n: count(n) });
 }
 
+// Hidden space can be split into named parts (other volumes on the same disk);
+// the part without a more specific name is called "Hidden space".
+const isHiddenRest = (node) => node.name === 'Hidden space';
+
+function hiddenHint(node) {
+  if (isHiddenRest(node)) return t('hidden_space_hint');
+  const known = { Preboot: 'vol_preboot', Recovery: 'vol_recovery', VM: 'vol_vm', Update: 'vol_update' }[node.name];
+  return `${t('volume_hint')}${known ? ` ${t(known)}` : ''}`;
+}
+
 function displayName(node) {
   if (!node) return '';
-  if (node.kind === 'hidden') return t('hidden_space');
+  if (node.kind === 'hidden') return isHiddenRest(node) ? t('hidden_space') : node.name;
   if (node.kind === 'group') return t('smaller_items', { n: count(node.items) });
   if (node.id === state.rootId) return state.scanLabel || node.name;
   return node.name;
@@ -621,7 +631,7 @@ function createChart() {
   chart = new View(canvas, {
     rings: rings(),
     animate: animationsOn(),
-    hiddenLabel: t('hidden_space'),
+    hiddenLabel: (node) => displayName(node),
     formatSize: (n) => bytes(n),
     canGoUp: () => state.focusId !== state.rootId,
     onGeometry: positionCenter,
@@ -772,13 +782,64 @@ function renderUsage() {
   const v = state.result.volume;
   if (v) {
     const used = Math.max(0, v.total - v.available);
+    // Hidden space gets its own hatched piece of the bar, as in the chart.
+    const hidden = Math.min(used, state.result.stats.hidden || 0);
     el.innerHTML = `
-      <div class="usage-bar"><div style="width:${(used / v.total) * 100}%"></div></div>
+      <div class="usage-bar"><div class="usage-fill" style="width:${(used / v.total) * 100}%"><div class="usage-files"></div>${
+        hidden > 0 ? `<div class="usage-hidden" style="width:${(hidden / used) * 100}%"></div>` : ''
+      }</div></div>
       <div class="usage-text"><b>${esc(bytes(used))}</b> ${esc(t('used').toLowerCase())} · <b>${esc(bytes(v.available))}</b> ${esc(t('free').toLowerCase())} · ${esc(bytes(v.total))}</div>`;
   } else {
     el.innerHTML = `<div class="usage-text">${icon('folder')} <b>${esc(bytes(state.result.stats.size))}</b> ${esc(t('total_on_disk'))}</div>`;
     el.querySelector('.icon').style.cssText = 'width:14px;height:14px;vertical-align:-2px;margin-right:4px';
   }
+  el.onmouseenter = showUsageTooltip;
+  el.onmouseleave = hideTooltip;
+  loadUsageParts();
+}
+
+// Pieces of hidden space (other volumes on the disk), for the usage tooltip.
+async function loadUsageParts() {
+  state.usageParts = [];
+  if (!state.result?.volume || !(state.result.stats.hidden > 0)) return;
+  const result = state.result;
+  try {
+    const parts = (await api.listChildren(state.rootId, LIST_LIMIT)).filter((n) => n.kind === 'hidden');
+    if (state.result === result) state.usageParts = parts;
+  } catch {
+    // The tooltip then shows the total only.
+  }
+}
+
+// Shows right away (a native title waits about a second), below the bar.
+function showUsageTooltip() {
+  const v = state.result?.volume;
+  const el = $('#usage');
+  if (!v || !el) return;
+  const used = Math.max(0, v.total - v.available);
+  const hidden = Math.min(used, state.result.stats.hidden || 0);
+  const row = (swatch, label, size, sub = false) =>
+    `<div class="tt-row${sub ? ' tt-row-sub' : ''}"><span class="tt-swatch ${swatch}"></span><span class="tt-label">${esc(label)}</span><span class="tt-val">${esc(bytes(size))}</span><span class="tt-pct">${esc(percent(size, v.total))}</span></div>`;
+  let rows = row('sw-files', t('usage_files'), used - hidden);
+  if (hidden > 0) {
+    rows += row('sw-hidden', t('hidden_space'), hidden);
+    // Named volumes first, the leftover last.
+    const parts = [...(state.usageParts || [])].sort((a, b) => isHiddenRest(a) - isHiddenRest(b));
+    if (parts.length > 1) rows += parts.map((n) => row('sw-none', isHiddenRest(n) ? t('hidden_other') : displayName(n), n.size, true)).join('');
+  }
+  rows += row('sw-free', t('free'), v.available);
+  const tip = $('#tooltip');
+  tip.innerHTML = `
+    <div class="tt-name">${esc(state.scanLabel || v.name)}</div>
+    <div class="tt-size">${esc(bytes(used))} <span class="tt-unit">${esc(t('used').toLowerCase())}</span></div>
+    <div class="tt-sub">${esc(t('usage_of', { total: bytes(v.total) }))}</div>
+    <div class="tt-rows">${rows}</div>
+    ${hidden > 0 ? `<div class="tt-hint">${esc(t('usage_hint'))}</div>` : ''}`;
+  tip.hidden = false;
+  const box = el.getBoundingClientRect();
+  const r = tip.getBoundingClientRect();
+  tip.style.left = `${Math.max(8, Math.min(box.left, innerWidth - r.width - 8))}px`;
+  tip.style.top = `${box.bottom + 8}px`;
 }
 
 function renderStatus() {
@@ -789,8 +850,13 @@ function renderStatus() {
     ? `<span>${esc(t('saved_summary', { files: count(stats.files), when: new Date(stats.scanned_at_ms).toLocaleString(lang(), { dateStyle: 'medium', timeStyle: 'short' }) }))}</span>`
     : `<span>${esc(t('scanned_summary', { files: count(stats.files), time: duration(elapsed_ms) }))}</span>`;
   if (stats.unreadable > 0) {
-    html += `<span class="status-warn">${icon('lock')}${esc(t('unreadable', { n: count(stats.unreadable) }))}</span>`;
-    if (isMac()) html += `<button class="status-link" id="fda" type="button">${esc(t('grant_access'))}</button>`;
+    if (isMac() && state.info.full_disk_access === true) {
+      // With Full Disk Access, what is left belongs to the system (root-only or SIP-protected).
+      html += `<span class="status-note" title="${esc(t('unreadable_system_hint'))}">${icon('lock')}${esc(t('unreadable_system', { n: count(stats.unreadable) }))}</span>`;
+    } else {
+      html += `<span class="status-warn">${icon('lock')}${esc(t('unreadable', { n: count(stats.unreadable) }))}</span>`;
+      if (isMac()) html += `<button class="status-link" id="fda" type="button">${esc(t('grant_access'))}</button>`;
+    }
   }
   if (state.colorMode === 'change') {
     const key = (c, label) => `<span><i style="background:${css(CHANGE_COLORS[c])}"></i>${esc(t(label))}</span>`;
@@ -867,7 +933,7 @@ function renderPanelHead() {
 function rowHtml(item, { total, sub = null, showPct = true, meta = null, pct = null, barColor = null }) {
   const color = colorFor(item);
   const isDir = item.kind === 'dir';
-  const glyphIcon = item.kind === 'group' ? 'layers' : item.kind === 'hidden' ? 'lock' : isDir ? 'folder' : 'file';
+  const glyphIcon = item.kind === 'group' ? 'layers' : item.kind === 'hidden' ? (isHiddenRest(item) ? 'lock' : 'drive') : isDir ? 'folder' : 'file';
   const clickable = item.id >= 0 && item.kind !== 'hidden';
   const share = pct ?? (total ? Math.min(1, item.size / total) : 0);
   const collected = state.collector.has(item.id) ? ' collected' : '';
@@ -876,7 +942,7 @@ function rowHtml(item, { total, sub = null, showPct = true, meta = null, pct = n
       <div class="bar" style="--pct:${share};background:${barColor || color}"></div>
       <div class="glyph${item.kind === 'group' ? ' group' : ''}" style="background:${color}">${icon(glyphIcon)}</div>
       <div class="label">
-        <div class="name" title="${esc(displayName(item))}">${esc(displayName(item))}</div>
+        <div class="name" title="${esc(displayName(item))}">${esc(displayName(item))}${item.locked ? `<span class="locked-badge" title="${esc(t('locked_item'))}">${icon('lock')}</span>` : ''}</div>
         ${sub ? `<div class="sub" title="${esc(sub)}">${esc(sub)}</div>` : ''}
       </div>
       <div class="meta">${meta ?? `<div class="size">${esc(bytes(item.size))}</div>${showPct ? `<div class="pct">${esc(percent(item.size, total))}</div>` : ''}`}</div>
@@ -911,7 +977,7 @@ async function refreshPanel() {
       if (token !== state.panelToken) return;
       items.forEach((h) => h.id >= 0 && state.rows.set(h.id, h));
       body.innerHTML = items.length
-        ? items.map((h) => rowHtml(h, { total, sub: h.kind === 'dir' ? itemsLabel(h.items) : null })).join('')
+        ? items.map((h) => rowHtml(h, { total, sub: h.kind === 'dir' ? itemsLabel(h.items) : h.kind === 'hidden' && !isHiddenRest(h) ? t('volume_sub') : null })).join('')
         : `<div class="empty">${esc(t('empty_folder'))}</div>`;
     } else if (state.tab === 'largest') {
       const hits = await api.largestFiles(id, 150, state.ageDays);
@@ -1261,7 +1327,8 @@ function showTooltip(node, e) {
   const tip = $('#tooltip');
   const focus = state.view.root;
   let hint = '';
-  if (node.kind === 'hidden') hint = `<div class="tt-hint">${esc(t('hidden_space_hint'))}</div>`;
+  if (node.kind === 'hidden') hint = `<div class="tt-hint">${esc(hiddenHint(node))}</div>`;
+  else if (node.locked) hint = `<div class="tt-hint">${icon('lock')} ${esc(t('locked_hint'))}</div>`;
   const sub = node.kind === 'group' ? t('smaller_items', { n: count(node.items) }) : node.kind === 'dir' ? itemsLabel(node.items) : '';
   const change =
     node.delta != null && state.compare
@@ -1312,12 +1379,13 @@ function showMenu(item, e) {
   entries.push(['copy', 'copy', t('copy_path')]);
   if (!isRoot) {
     entries.push(null);
-    entries.push(inCollector ? ['uncollect', 'x', t('remove_from_collector')] : ['collect', 'trash', t('add_to_collector')]);
+    if (item.locked) entries.push(['locked', 'lock', t('locked_item'), true]);
+    else entries.push(inCollector ? ['uncollect', 'x', t('remove_from_collector')] : ['collect', 'trash', t('add_to_collector')]);
     if (item.kind === 'dir') entries.push(['exclude', 'ban', t('exclude')]);
   }
   menu.innerHTML =
     `<div class="ctx-title">${esc(displayName(item))} · ${esc(bytes(item.size))}</div>` +
-    entries.map((en) => (en ? `<button type="button" data-act="${en[0]}">${icon(en[1])}<span>${esc(en[2])}</span></button>` : '<hr/>')).join('');
+    entries.map((en) => (en ? `<button type="button" data-act="${en[0]}"${en[3] ? ' disabled' : ''}>${icon(en[1])}<span>${esc(en[2])}</span></button>` : '<hr/>')).join('');
   menu.hidden = false;
   const r = menu.getBoundingClientRect();
   let x = e.clientX;
@@ -1374,6 +1442,10 @@ function hideMenu() {
 
 function beginDrag(item, e) {
   if (item.id < 0 || item.kind === 'hidden' || item.id === state.rootId) return;
+  if (item.locked) {
+    toast(t('locked_toast', { name: displayName(item) }));
+    return;
+  }
   hideTooltip();
   const ghost = $('#drag-ghost');
   const collector = $('#collector');
@@ -1408,6 +1480,10 @@ function beginDrag(item, e) {
 
 async function addToCollector(item) {
   if (item.id < 0 || item.kind === 'hidden' || item.id === state.rootId) return;
+  if (item.locked) {
+    toast(t('locked_toast', { name: displayName(item) }));
+    return;
+  }
   if (state.collector.has(item.id)) {
     toast(t('already_collected'));
     return;
@@ -1421,7 +1497,8 @@ async function addManyToCollector(ids) {
   const fresh = ids.filter((id) => id >= 0 && id !== state.rootId && !state.collector.has(id));
   for (const id of fresh) state.collector.set(id, { id, name: '', size: 0, kind: 'file', cat: 7, covered: false });
   await resolveCollector();
-  if (fresh.length) toast(t('collected_many', { n: count(fresh.length) }));
+  const added = fresh.filter((id) => state.collector.has(id)).length;
+  if (added) toast(t('collected_many', { n: count(added) }));
 }
 
 function removeFromCollector(id) {
@@ -1435,8 +1512,12 @@ async function resolveCollector() {
     try {
       const resolved = await api.resolveItems(ids);
       const next = new Map();
-      for (const r of resolved) next.set(r.id, r);
+      // Protected folders never enter the Collector, however they were added.
+      const locked = resolved.filter((r) => r.locked);
+      for (const r of resolved) if (!r.locked) next.set(r.id, r);
       state.collector = next;
+      if (locked.length === 1) toast(t('locked_toast', { name: locked[0].name }));
+      else if (locked.length > 1) toast(t('locked_many', { n: count(locked.length) }));
     } catch {
       /* keep the optimistic state */
     }
