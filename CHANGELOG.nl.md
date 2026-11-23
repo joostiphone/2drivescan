@@ -2,6 +2,16 @@
 
 Alle belangrijke wijzigingen in 2DriveScan. De Engelse versie staat in `CHANGELOG.md`.
 
+## Nog niet uitgebracht
+
+- **Verborgen ruimte uitgesplitst.** Op macOS krijgen de andere volumes op dezelfde schijf (Preboot, Recovery,
+  VM, Update, of volumes die je zelf hebt toegevoegd, zoals een Nix-store) nu een eigen segment met naam en
+  grootte, en een tooltip vertelt waar elk volume voor is. Alleen wat overblijft heet nog verborgen ruimte. Ook de
+  gebruiksbalk bovenaan toont verborgen ruimte nu als gearceerd stuk; beweeg erover voor de uitsplitsing.
+- **Controle op volledige schijftoegang.** 2DriveScan controleert nu of het volledige schijftoegang heeft. Staat
+  die aan, dan vraagt de statusbalk er niet meer om als er alleen systeemmappen van macOS (die geen enkele app kan
+  lezen) ongelezen blijven, en Instellingen toont of de toegang aanstaat.
+
 ## 0.5.0 – 2026-11-08
 
 - **Wat er veranderd is sinds de vorige scan.** 2DriveScan bewaart de vorige scan van elke schijf of map en

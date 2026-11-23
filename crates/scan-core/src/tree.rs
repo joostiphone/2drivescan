@@ -15,6 +15,10 @@ use crate::category::{Category, CATEGORY_COUNT};
 pub type NodeId = u32;
 pub const NO_PARENT: NodeId = u32::MAX;
 
+/// Name of the hidden-space node that holds what could not be attributed to
+/// anything more specific (the UI translates it).
+pub const HIDDEN_SPACE: &str = "Hidden space";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -335,16 +339,37 @@ impl Tree {
         }
     }
 
-    /// Adds a synthetic "hidden space" child to the root, representing used
-    /// volume space not accounted for by scanned files.
-    pub fn add_hidden_space(&mut self, bytes: u64) {
+    /// Adds synthetic "hidden space" children to the root: used volume space
+    /// not accounted for by scanned files. `parts` are known pieces of it,
+    /// such as other volumes that share the same disk space; each becomes its
+    /// own node (capped so the total stays `bytes`). What is left gets the
+    /// name [`HIDDEN_SPACE`]. Does nothing when hidden space was added before.
+    pub fn add_hidden_space(&mut self, bytes: u64, parts: &[(String, u64)]) {
         if bytes == 0 || self.hidden > 0 {
             return;
         }
+        let mut left = bytes;
+        for (name, size) in parts {
+            let size = (*size).min(left);
+            if size == 0 || name.is_empty() || name == HIDDEN_SPACE {
+                continue;
+            }
+            self.push_hidden(name, size);
+            left -= size;
+        }
+        if left > 0 {
+            self.push_hidden(HIDDEN_SPACE, left);
+        }
+        self.hidden = bytes;
+        self.nodes[0].size += bytes;
+        self.sort_children(0);
+    }
+
+    fn push_hidden(&mut self, name: &str, size: u64) {
         let id = self.nodes.len() as NodeId;
         self.nodes.push(Node {
-            name: "Hidden space".into(),
-            size: bytes,
+            name: name.into(),
+            size,
             items: 0,
             parent: 0,
             kind: Kind::Hidden,
@@ -356,10 +381,7 @@ impl Tree {
             children: Vec::new(),
             cats: None,
         });
-        self.hidden = bytes;
-        self.nodes[0].size += bytes;
         self.nodes[0].children.push(id);
-        self.sort_children(0);
     }
 
     fn sort_children(&mut self, id: NodeId) {
@@ -734,7 +756,7 @@ impl Tree {
         }
 
         if was_hidden {
-            self.hidden = 0;
+            self.hidden = self.hidden.saturating_sub(size);
         }
 
         let p = &mut self.nodes[parent as usize];

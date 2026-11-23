@@ -372,7 +372,7 @@ export function createMock() {
       if (pa != null && pa >= 0) nodes[pa].children.sort((x, y) => nodes[y].size - nodes[x].size);
       if (a === rootId) break;
     }
-    if (n.kind === 'hidden') hiddenBytes = 0;
+    if (n.kind === 'hidden') hiddenBytes = Math.max(0, hiddenBytes - n.size);
     return n.size;
   };
 
@@ -401,9 +401,17 @@ export function createMock() {
       const used = vol.total - vol.available;
       hiddenBytes = Math.max(0, used - nodes[0].size);
       if (hiddenBytes > 0) {
-        const h = { id: nodes.length, name: 'Hidden space', parent: 0, kind: 'hidden', size: hiddenBytes, items: 0, cat: 7, children: [], removed: false };
-        nodes.push(h);
-        nodes[0].children.push(h.id);
+        // Like the real app on macOS: other APFS volumes on the disk get their own slice.
+        const parts = vol.file_system === 'apfs' ? [['Preboot', 7.4 * GB], ['VM', 3.2 * GB], ['Recovery', 1.3 * GB], ['Update', 0.6 * GB]] : [];
+        let left = hiddenBytes;
+        for (const [name, want] of [...parts, ['Hidden space', Infinity]]) {
+          const size = Math.round(Math.min(want, left));
+          if (size <= 0) continue;
+          left -= size;
+          const h = { id: nodes.length, name, parent: 0, kind: 'hidden', size, items: 0, cat: 7, children: [], removed: false };
+          nodes.push(h);
+          nodes[0].children.push(h.id);
+        }
         nodes[0].size += hiddenBytes;
         nodes[0].children.sort((a, b) => nodes[b].size - nodes[a].size);
       }
@@ -426,7 +434,7 @@ export function createMock() {
   ];
 
   const handlers = {
-    app_info: () => ({ version: '0.5.0', os: 'macos', arch: 'aarch64', home: '/Users/joost', preview: true }),
+    app_info: () => ({ version: '0.5.0', os: 'macos', arch: 'aarch64', home: '/Users/joost', full_disk_access: true, preview: true }),
     list_volumes: () => VOLUMES,
     pick_folder: () => '/Users/joost/Developer',
     saved_scans: () =>

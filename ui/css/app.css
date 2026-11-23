@@ -973,10 +973,23 @@ body:not([data-screen='result']) .crumbs {
   flex: none;
 }
 
-.usage-bar > div {
+.usage-fill {
+  display: flex;
   height: 100%;
   border-radius: inherit;
+  overflow: hidden;
+}
+
+.usage-files {
+  flex: 1;
+  min-width: 0;
   background: var(--accent-grad);
+}
+
+/* Same color and hatching as hidden space in the chart. */
+.usage-hidden {
+  flex: none;
+  background: repeating-linear-gradient(-45deg, rgb(84 89 118) 0 2px, rgb(122 128 160) 2px 4px);
 }
 
 .usage-text {
@@ -1547,6 +1560,71 @@ body:not([data-screen='result']) .crumbs {
 .tooltip .tt-sub {
   color: var(--text-3);
   margin-top: 2px;
+}
+
+.tooltip .tt-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-3);
+  letter-spacing: 0;
+}
+
+.tooltip .tt-rows {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  column-gap: 8px;
+  row-gap: 4px;
+  align-items: center;
+  margin-top: 8px;
+  min-width: 230px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltip .tt-row {
+  display: contents;
+}
+
+.tooltip .tt-row-sub .tt-label {
+  padding-left: 10px;
+  color: var(--text-3);
+}
+
+.tooltip .tt-row-sub .tt-val {
+  color: var(--text-3);
+}
+
+.tooltip .tt-row-sub .tt-pct {
+  visibility: hidden;
+}
+
+.tooltip .tt-val {
+  text-align: right;
+  font-weight: 600;
+}
+
+.tooltip .tt-pct {
+  text-align: right;
+  color: var(--text-3);
+  min-width: 34px;
+}
+
+.tooltip .tt-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.tooltip .sw-files {
+  background: var(--accent-grad);
+}
+
+.tooltip .sw-hidden {
+  background: repeating-linear-gradient(-45deg, rgb(84 89 118) 0 2px, rgb(122 128 160) 2px 4px);
+}
+
+.tooltip .sw-free {
+  background: var(--panel-strong);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 
 .tooltip .tt-hint {
@@ -2904,4 +2982,16 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.status-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: help;
+}
+
+.status-note .icon {
+  width: 14px;
+  height: 14px;
 }

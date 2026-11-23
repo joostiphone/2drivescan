@@ -70,6 +70,8 @@ struct AppInfo {
     os: &'static str,
     arch: &'static str,
     home: Option<String>,
+    /// macOS only: whether Full Disk Access is on (None when unknown).
+    full_disk_access: Option<bool>,
 }
 
 #[derive(Serialize, Clone)]
@@ -300,7 +302,7 @@ fn add_hidden_space(tree: &mut Tree, volume: Option<&Volume>) {
         let used = v.total.saturating_sub(v.available);
         let hidden = used.saturating_sub(tree.stats().size);
         if hidden > 64 * 1024 * 1024 && hidden > used / 200 {
-            tree.add_hidden_space(hidden);
+            tree.add_hidden_space(hidden, &volumes::hidden_parts(v));
         }
     }
 }
@@ -382,11 +384,13 @@ async fn install_update(app: AppHandle, state: State<'_, AppState>) -> CmdResult
 
 #[tauri::command]
 fn app_info(app: AppHandle) -> AppInfo {
+    let home = app.path().home_dir().ok();
     AppInfo {
         version: app.package_info().version.to_string(),
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
-        home: app.path().home_dir().ok().map(|p| p.display().to_string()),
+        full_disk_access: volumes::full_disk_access(home.as_deref()),
+        home: home.map(|p| p.display().to_string()),
     }
 }
 

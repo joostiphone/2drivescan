@@ -16,7 +16,8 @@ pub use listing::disable_cloud_downloads;
 pub use scanner::{scan, Progress, ProgressSnapshot, ScanError, ScanOptions};
 pub use store::SavedScan;
 pub use tree::{
-    kind_str, ChangeItem, Comparison, Crumb, ItemHit, Kind, Node, NodeId, Tree, TreeStats, ViewNode,
+    kind_str, ChangeItem, Comparison, Crumb, ItemHit, Kind, Node, NodeId, Tree, TreeStats,
+    ViewNode, HIDDEN_SPACE,
 };
 
 #[cfg(test)]
@@ -119,10 +120,58 @@ mod tests {
         let dir = sample();
         let mut tree = scan_sample(&dir);
         let size = tree.stats().size;
-        tree.add_hidden_space(10_000_000);
+        tree.add_hidden_space(10_000_000, &[]);
         assert_eq!(tree.stats().size, size + 10_000_000);
         let root = tree.get(0).unwrap();
         assert_eq!(tree.get(root.children[0]).unwrap().kind, Kind::Hidden);
+    }
+
+    #[test]
+    fn hidden_space_is_split_into_known_parts() {
+        let dir = sample();
+        let mut tree = scan_sample(&dir);
+        let size = tree.stats().size;
+        let parts = [
+            ("Preboot".to_string(), 6_000_000),
+            ("VM".to_string(), 3_000_000),
+            ("Too big".to_string(), 5_000_000),
+        ];
+        tree.add_hidden_space(10_000_000, &parts);
+        let stats = tree.stats();
+        assert_eq!(stats.size, size + 10_000_000);
+        assert_eq!(stats.hidden, 10_000_000);
+        let hidden: Vec<(String, u64)> = tree
+            .get(0)
+            .unwrap()
+            .children
+            .iter()
+            .map(|&c| tree.get(c).unwrap())
+            .filter(|n| n.kind == Kind::Hidden)
+            .map(|n| (n.name.to_string(), n.size))
+            .collect();
+        // Capped at the total; nothing left over for "Hidden space".
+        assert_eq!(
+            hidden,
+            [
+                ("Preboot".to_string(), 6_000_000),
+                ("VM".to_string(), 3_000_000),
+                ("Too big".to_string(), 1_000_000),
+            ]
+        );
+        // Removing one part only takes its own bytes out of the total.
+        let vm = tree.search(0, "VM", 10);
+        assert!(vm.is_empty(), "hidden space is not searchable");
+        let id = tree
+            .get(0)
+            .unwrap()
+            .children
+            .iter()
+            .copied()
+            .find(|&c| &*tree.get(c).unwrap().name == "VM")
+            .unwrap();
+        tree.remove(id);
+        assert_eq!(tree.stats().hidden, 7_000_000);
+        assert_eq!(tree.hidden_below(0), 7_000_000);
     }
 
     #[cfg(unix)]

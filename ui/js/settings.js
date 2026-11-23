@@ -136,6 +136,12 @@ function seg(pref, options, value = getPref(pref)) {
     </div>`;
 }
 
+function fdaStatus(on) {
+  if (on === true) return t('fda_on');
+  if (on === false) return t('fda_off');
+  return '';
+}
+
 function row(label, hint, control) {
   return `
     <div class="set-row">
@@ -292,7 +298,7 @@ const PAGE_RENDER = {
         showFda
           ? `<div class="set-group">
         <div class="set-group-title">${esc(t('fda_title'))}</div>
-        <div class="set-card">${row(t('fda_title'), t('fda_hint'), `<button class="btn btn-sm" type="button" data-url="fda">${icon('lock')}${esc(t('fda_open'))}</button>`)}</div>
+        <div class="set-card">${row(t('fda_title'), `${t('fda_hint')} ${fdaStatus(hooks.info().full_disk_access)}`.trim(), `<button class="btn btn-sm" type="button" data-url="fda">${icon('lock')}${esc(t('fda_open'))}</button>`)}</div>
       </div>`
           : ''
       }`;
